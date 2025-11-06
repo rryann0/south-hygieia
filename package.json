@@ -1,14 +1,17 @@
 {
   "name": "hygieia",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "homepage": "https://rryann0.github.io/south-hygieia",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "preview": "vite preview",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist"
   },
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
   "dependencies": {
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
