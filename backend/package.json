@@ -1,0 +1,30 @@
+{
+  "name": "cleanliness-backend",
+  "version": "1.0.0",
+  "description": "Campus cleanliness tracking API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "better-sqlite3": "^9.2.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.1.5",
+    "express-session": "^1.17.3",
+    "connect-sqlite3": "^0.9.13",
+    "bcrypt": "^5.1.1",
+    "nodemailer": "^6.9.7",
+    "web-push": "^3.6.6",
+    "pdfkit": "^0.13.0",
+    "winston": "^3.11.0",
+    "winston-daily-rotate-file": "^4.7.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
+

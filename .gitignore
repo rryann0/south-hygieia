@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+
+# Environment
+.env
+*/.env
+backend/.env
+
+# Logs
+logs/
+*.log
+backend/logs/
+backend/*.log
+
+# Build
+dist/
+build/
+*/dist/
+*/build/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+.cursor/
+
+# Session storage
+data/
+sessions.db
+backend/data/
+backend/sessions.db
+
+# Testing
+coverage/
+.nyc_output/
+
+# Misc
+*.pem
+*.key
+*.cert
+
