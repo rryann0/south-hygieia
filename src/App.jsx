@@ -4,8 +4,8 @@ import api from './api';
 // Gender mapping (move to backend later if needed)
 const femaleCustodians = ['Shantelle', 'Jalessa'];
 const maleCustodians = ['Joel', 'Javon', 'Rey'];
-const femaleRestrooms = ['Restroom A', 'Restroom B'];
-const maleRestrooms = ['Restroom C', 'Restroom D'];
+const femaleRestrooms = ["Girls' Locker Room", 'H Wing', 'J Wing', 'C Wing', 'E Wing', 'M Wing'];
+const maleRestrooms = ["Boys' Locker Room", 'G Wing', 'D Wing', 'L Wing', 'N Wing'];
 
 function App() {
   const [restrooms, setRestrooms] = useState([]);
@@ -58,10 +58,19 @@ function App() {
       
       // Use default data structure
       const defaultRestrooms = [
-        { id: 'restroom-a', name: 'Restroom A', building: 'Main', floor: 1 },
-        { id: 'restroom-b', name: 'Restroom B', building: 'Main', floor: 2 },
-        { id: 'restroom-c', name: 'Restroom C', building: 'Science', floor: 1 },
-        { id: 'restroom-d', name: 'Restroom D', building: 'Science', floor: 2 }
+        // Boys' restrooms
+        { id: 'boys-locker-room', name: "Boys' Locker Room", building: 'Athletics', floor: 1 },
+        { id: 'g-wing', name: 'G Wing', building: 'G Wing', floor: 1 },
+        { id: 'd-wing', name: 'D Wing', building: 'D Wing', floor: 1 },
+        { id: 'l-wing', name: 'L Wing', building: 'L Wing', floor: 1 },
+        { id: 'n-wing', name: 'N Wing', building: 'N Wing', floor: 1 },
+        // Girls' restrooms
+        { id: 'girls-locker-room', name: "Girls' Locker Room", building: 'Athletics', floor: 1 },
+        { id: 'h-wing', name: 'H Wing', building: 'H Wing', floor: 1 },
+        { id: 'j-wing', name: 'J Wing', building: 'J Wing', floor: 1 },
+        { id: 'c-wing', name: 'C Wing', building: 'C Wing', floor: 1 },
+        { id: 'e-wing', name: 'E Wing', building: 'E Wing', floor: 1 },
+        { id: 'm-wing', name: 'M Wing', building: 'M Wing', floor: 1 }
       ];
       
       const defaultCustodians = [
