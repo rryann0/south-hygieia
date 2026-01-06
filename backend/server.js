@@ -42,6 +42,21 @@ const logger = winston.createLogger({
 const db = new Database(process.env.DB_PATH || 'cleanliness.db');
 db.pragma('journal_mode = WAL');
 
+db.on('error', (err) => {
+  logger.error('Database error:', err);
+  logger.error('Error code:', err.code);
+  logger.error('Error message:', err.message);
+  logger.error('Error errno:', err.errno);
+});
+
+try {
+  db.prepare('SELECT 1').get();
+  logger.info('Database connected successfully');
+} catch (err) {
+  logger.error('Database connection failed:', err);
+  process.exit(1);
+}
+
 // Create tables
 db.exec(`
   CREATE TABLE IF NOT EXISTS restrooms (
