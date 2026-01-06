@@ -40,7 +40,7 @@ const logger = winston.createLogger({
 
 // ============ DATABASE SETUP ============
 const db = new Database(process.env.DB_PATH || 'cleanliness.db');
-db.pragma('journal_mode = WAL');
+db.pragma('journal_mode = DELETE');
 
 try {
   db.prepare('SELECT 1').get();
