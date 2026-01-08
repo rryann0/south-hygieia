@@ -4,5 +4,5 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: '/south-hygieia/',
+  base: '/',  // Changed from '/south-hygieia/' to '/' for server deployment
 })
