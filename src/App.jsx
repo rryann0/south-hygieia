@@ -19,15 +19,44 @@ function App() {
   const [incidentDescription, setIncidentDescription] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [usingLocalStorage, setUsingLocalStorage] = useState(false);
+  const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
 
   // Load data on mount
   useEffect(() => {
     loadData();
+    checkAdminStatus();
   }, []);
 
-  const loadData = async () => {
+  // Auto-refresh data every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Refresh data silently (without showing loading spinner)
+      loadData(false).catch(err => console.error('Auto-refresh error:', err));
+      checkAdminStatus();
+    }, 30000); // Refresh every 30 seconds
+
+    // Cleanup interval on unmount
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
+
+  // Check admin status from server
+  const checkAdminStatus = async () => {
     try {
-      setLoading(true);
+      const response = await api.checkAdminStatus();
+      setIsAdmin(response.isAdmin || false);
+    } catch (error) {
+      // If API fails, fall back to localStorage mode - no admin by default
+      setIsAdmin(false);
+    }
+  };
+
+  const loadData = async (showLoading = true) => {
+    try {
+      if (showLoading) {
+        setLoading(true);
+      }
       const [restroomsData, custodiansData, checksData, incidentsData] = await Promise.all([
         api.getRestrooms(),
         api.getCustodians(),
@@ -248,6 +277,50 @@ function App() {
     }
   };
 
+  const handleAdminLogin = async () => {
+    try {
+      // Try API first
+      try {
+        const response = await api.adminLogin(passwordInput);
+        if (response.success) {
+          setIsAdmin(true);
+          setShowPasswordPrompt(false);
+          setPasswordInput('');
+          alert('Admin access granted!');
+          return;
+        }
+      } catch (apiError) {
+        // If API fails and we're in localStorage mode, we can't verify password
+        // In this case, we'll just show an error
+        if (usingLocalStorage) {
+          alert('Admin authentication requires backend server connection.');
+          setPasswordInput('');
+          setShowPasswordPrompt(false);
+          return;
+        }
+        const errorMsg = apiError.response?.data?.error || 'Invalid password';
+        alert(errorMsg);
+        setPasswordInput('');
+      }
+    } catch (error) {
+      console.error('Admin login error:', error);
+      alert('Failed to authenticate. Please try again.');
+      setPasswordInput('');
+    }
+  };
+
+  const handleAdminLogout = async () => {
+    try {
+      await api.adminLogout();
+      setIsAdmin(false);
+      alert('Logged out of admin mode');
+    } catch (error) {
+      console.error('Failed to logout:', error);
+      // Still set admin to false locally
+      setIsAdmin(false);
+    }
+  };
+
   const pendingIncidents = incidents.filter(i => i.pending === 1 || i.pending === true);
 
   if (loading) {
@@ -277,6 +350,7 @@ function App() {
                   ⚠️ Using local storage mode (Backend server not available)
                 </p>
               )}
+              <p className="text-xs text-gray-400 mt-1">🔄 Auto-sync enabled • Updates every 30 seconds</p>
             </div>
             <button
               className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 ${
@@ -284,11 +358,56 @@ function App() {
                   ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white' 
                   : 'bg-gradient-to-r from-gray-400 to-gray-500 text-white'
               }`}
-              onClick={() => setIsAdmin(!isAdmin)}
+              onClick={() => {
+                if (isAdmin) {
+                  handleAdminLogout();
+                } else {
+                  setShowPasswordPrompt(true);
+                }
+              }}
             >
               {isAdmin ? '👤 Admin Mode' : '👤 User Mode'}
             </button>
           </div>
+
+          {/* Password Prompt Modal */}
+          {showPasswordPrompt && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full mx-4">
+                <h3 className="text-2xl font-bold text-gray-800 mb-4">Enter Admin Password</h3>
+                <input
+                  type="password"
+                  className="w-full border-2 border-gray-200 rounded-xl p-3 mb-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
+                  placeholder="Admin password"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleAdminLogin();
+                    }
+                  }}
+                  autoFocus
+                />
+                <div className="flex gap-3">
+                  <button
+                    className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-md hover:shadow-lg"
+                    onClick={handleAdminLogin}
+                  >
+                    Login
+                  </button>
+                  <button
+                    className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 px-6 py-3 rounded-xl font-semibold transition-all duration-200"
+                    onClick={() => {
+                      setShowPasswordPrompt(false);
+                      setPasswordInput('');
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="mt-4">
             <label className="block mb-2 font-semibold text-gray-700">Select Your Name:</label>

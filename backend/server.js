@@ -170,11 +170,54 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
+// ============ MIDDLEWARE ============
+
+// Check if user is admin (middleware)
+const isAdmin = (req, res, next) => {
+  if (req.session.isAdmin) {
+    next();
+  } else {
+    res.status(403).json({ error: 'Admin access required' });
+  }
+};
+
 // ============ API ROUTES ============
 
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Check admin status
+app.get('/api/admin/status', (req, res) => {
+  res.json({ isAdmin: !!req.session.isAdmin });
+});
+
+// Admin login
+app.post('/api/admin/login', (req, res) => {
+  const { password } = req.body;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+
+  if (!adminPassword) {
+    logger.error('ADMIN_PASSWORD not set in environment variables');
+    return res.status(500).json({ error: 'Admin password not configured' });
+  }
+
+  if (password === adminPassword) {
+    req.session.isAdmin = true;
+    logger.info('Admin login successful');
+    res.json({ success: true, message: 'Admin access granted' });
+  } else {
+    logger.warn('Failed admin login attempt');
+    res.status(401).json({ error: 'Invalid password' });
+  }
+});
+
+// Admin logout
+app.post('/api/admin/logout', (req, res) => {
+  req.session.isAdmin = false;
+  logger.info('Admin logged out');
+  res.json({ success: true, message: 'Logged out' });
 });
 
 // Get all restrooms
@@ -304,8 +347,8 @@ app.post('/api/incidents', (req, res) => {
   }
 });
 
-// Resolve incident (admin only - add auth middleware later)
-app.post('/api/incidents/resolve', (req, res) => {
+// Resolve incident (admin only)
+app.post('/api/incidents/resolve', isAdmin, (req, res) => {
   try {
     const { incidentId } = req.body;
 

@@ -2,6 +2,9 @@ import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.DEV ? 'http://localhost:3000/api' : '/api';
 
+// Configure axios to send credentials (cookies) with all requests
+axios.defaults.withCredentials = true;
+
 const api = {
   // Get all restrooms
   getRestrooms: async () => {
@@ -54,6 +57,30 @@ const api = {
   resolveIncident: async (incidentId) => {
     const response = await axios.post(`${API_BASE_URL}/incidents/resolve`, {
       incidentId
+    });
+    return response.data;
+  },
+
+  // Admin authentication
+  checkAdminStatus: async () => {
+    const response = await axios.get(`${API_BASE_URL}/admin/status`, {
+      withCredentials: true
+    });
+    return response.data;
+  },
+
+  adminLogin: async (password) => {
+    const response = await axios.post(`${API_BASE_URL}/admin/login`, {
+      password
+    }, {
+      withCredentials: true
+    });
+    return response.data;
+  },
+
+  adminLogout: async () => {
+    const response = await axios.post(`${API_BASE_URL}/admin/logout`, {}, {
+      withCredentials: true
     });
     return response.data;
   }
