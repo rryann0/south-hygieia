@@ -192,12 +192,12 @@ function App() {
       } catch (apiError) {
         console.warn('API failed, using localStorage:', apiError);
         // Fallback to localStorage
-        const newLog = {
-          id: Date.now(),
-          custodian: selectedCustodian,
-          restroom: selectedRestroom,
+    const newLog = {
+      id: Date.now(),
+      custodian: selectedCustodian,
+      restroom: selectedRestroom,
           timestamp: new Date().toISOString(),
-        };
+    };
         const updatedLogs = [newLog, ...logs];
         setLogs(updatedLogs);
         localStorage.setItem('logs', JSON.stringify(updatedLogs));
@@ -233,19 +233,19 @@ function App() {
       } catch (apiError) {
         console.warn('API failed, using localStorage:', apiError);
         // Fallback to localStorage
-        const newIncident = {
-          id: Date.now(),
-          custodian: selectedCustodian,
-          restroom: selectedRestroom2,
-          description: incidentDescription,
+    const newIncident = {
+      id: Date.now(),
+      custodian: selectedCustodian,
+      restroom: selectedRestroom2,
+      description: incidentDescription,
           timestamp: new Date().toISOString(),
-          lastChecked: getLastCheckTime(selectedRestroom2),
-          pending: true,
-        };
+      lastChecked: getLastCheckTime(selectedRestroom2),
+      pending: true,
+    };
         const updatedIncidents = [newIncident, ...incidents];
         setIncidents(updatedIncidents);
         localStorage.setItem('incidents', JSON.stringify(updatedIncidents));
-        setIncidentDescription('');
+    setIncidentDescription('');
         alert('Incident reported successfully! (Using local storage)');
       }
     } catch (error) {
@@ -352,7 +352,7 @@ function App() {
               )}
               <p className="text-xs text-gray-400 mt-1">🔄 Auto-sync enabled • Updates every 30 seconds</p>
             </div>
-            <button
+        <button
               className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 ${
                 isAdmin 
                   ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white' 
@@ -365,10 +365,10 @@ function App() {
                   setShowPasswordPrompt(true);
                 }
               }}
-            >
+        >
               {isAdmin ? '👤 Admin Mode' : '👤 User Mode'}
-            </button>
-          </div>
+        </button>
+      </div>
 
           {/* Password Prompt Modal */}
           {showPasswordPrompt && (
@@ -411,21 +411,21 @@ function App() {
 
           <div className="mt-4">
             <label className="block mb-2 font-semibold text-gray-700">Select Your Name:</label>
-            <select
+        <select
               className="w-full border-2 border-gray-200 rounded-xl p-3 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none font-medium"
-              value={selectedCustodian}
-              onChange={(e) => setSelectedCustodian(e.target.value)}
-            >
+          value={selectedCustodian}
+          onChange={(e) => setSelectedCustodian(e.target.value)}
+        >
               {custodians.map((custodian) => (
                 <option key={custodian.id} value={custodian.name}>{custodian.name}</option>
-              ))}
-            </select>
+          ))}
+        </select>
           </div>
-        </div>
+      </div>
 
         {/* Action Cards Grid */}
         <div className="grid md:grid-cols-2 gap-6">
-          {/* Log Restroom Check */}
+      {/* Log Restroom Check */}
           <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100 hover:shadow-xl transition-shadow duration-200">
             <div className="flex items-center mb-4">
               <div className="bg-blue-100 rounded-full p-3 mr-3">
@@ -435,38 +435,38 @@ function App() {
             </div>
             <div className="mb-4">
               <label className="block mb-2 font-semibold text-gray-700">Select Restroom:</label>
-              <select
+          <select
                 className="w-full border-2 border-gray-200 rounded-xl p-3 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
-                value={selectedRestroom}
-                onChange={(e) => setSelectedRestroom(e.target.value)}
-              >
+            value={selectedRestroom}
+            onChange={(e) => setSelectedRestroom(e.target.value)}
+          >
                 {availableRestrooms.map((restroom) => (
                   <option key={restroom.id} value={restroom.name}>{restroom.name}</option>
-                ))}
-              </select>
-            </div>
-            <button
+            ))}
+          </select>
+        </div>
+        <button
               className={`w-full px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-[1.02] ${
                 hasActiveIncident(selectedRestroom) 
                   ? 'bg-gray-300 cursor-not-allowed text-gray-500' 
                   : 'bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white'
               }`}
-              onClick={handleLogCheck}
-              disabled={hasActiveIncident(selectedRestroom)}
-            >
+          onClick={handleLogCheck}
+          disabled={hasActiveIncident(selectedRestroom)}
+        >
               {hasActiveIncident(selectedRestroom) ? '⚠️ Cannot Check - Active Incident' : '✓ Log Check'}
-            </button>
-            {hasActiveIncident(selectedRestroom) && (
+        </button>
+        {hasActiveIncident(selectedRestroom) && (
               <div className="mt-4 p-3 bg-red-50 border-l-4 border-red-500 rounded-lg">
                 <p className="text-red-700 font-semibold flex items-center">
                   <span className="mr-2">🚨</span>
                   Incident reported! Cannot check this restroom until resolved.
                 </p>
               </div>
-            )}
-          </div>
+        )}
+      </div>
 
-          {/* Submit Incident */}
+      {/* Submit Incident */}
           <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100 hover:shadow-xl transition-shadow duration-200">
             <div className="flex items-center mb-4">
               <div className="bg-red-100 rounded-full p-3 mr-3">
@@ -476,31 +476,31 @@ function App() {
             </div>
             <div className="mb-4">
               <label className="block mb-2 font-semibold text-gray-700">Select Restroom:</label>
-              <select
+          <select
                 className="w-full border-2 border-gray-200 rounded-xl p-3 bg-white focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all outline-none"
-                value={selectedRestroom2}
-                onChange={(e) => setSelectedRestroom2(e.target.value)}
-              >
+            value={selectedRestroom2}
+            onChange={(e) => setSelectedRestroom2(e.target.value)}
+          >
                 {availableRestrooms.map((restroom) => (
                   <option key={restroom.id} value={restroom.name}>{restroom.name}</option>
-                ))}
-              </select>
-            </div>
-            <textarea
+            ))}
+          </select>
+        </div>
+        <textarea
               placeholder="Describe the incident in detail..."
               className="w-full border-2 border-gray-200 rounded-xl p-3 mb-4 bg-white focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all outline-none resize-none"
-              rows={3}
-              value={incidentDescription}
-              onChange={(e) => setIncidentDescription(e.target.value)}
-            />
-            <button
+          rows={3}
+          value={incidentDescription}
+          onChange={(e) => setIncidentDescription(e.target.value)}
+        />
+        <button
               className="w-full bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-[1.02]"
-              onClick={handleReportIncident}
-            >
+          onClick={handleReportIncident}
+        >
               🚨 Submit Incident
-            </button>
+        </button>
           </div>
-        </div>
+      </div>
 
         {/* Restroom Status Grid */}
         <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
@@ -509,7 +509,7 @@ function App() {
             Restroom Status Overview
           </h2>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {restrooms.map((restroom) => (
+          {restrooms.map((restroom) => (
               <div
                 key={restroom.id}
                 className={`p-5 rounded-xl border-2 transition-all duration-200 ${
@@ -547,9 +547,9 @@ function App() {
                   </div>
                 </div>
               </div>
-            ))}
+          ))}
           </div>
-        </div>
+      </div>
 
         {/* Pending Incidents */}
         <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
@@ -562,9 +562,9 @@ function App() {
               </span>
             )}
           </h2>
-          {pendingIncidents.length > 0 ? (
+        {pendingIncidents.length > 0 ? (
             <div className="space-y-4">
-              {pendingIncidents.map((incident) => (
+            {pendingIncidents.map((incident) => (
                 <div
                   key={incident.id}
                   className="bg-red-50 border-l-4 border-red-500 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow duration-200"
@@ -591,15 +591,15 @@ function App() {
                           </span>
                         )}
                       </div>
-                    </div>
-                    {isAdmin && (
-                      <button
+                  </div>
+                  {isAdmin && (
+                    <button
                         className="ml-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 whitespace-nowrap"
-                        onClick={() => handleResolveIncident(incident.id)}
-                      >
+                      onClick={() => handleResolveIncident(incident.id)}
+                    >
                         ✓ Resolve
-                      </button>
-                    )}
+                    </button>
+                  )}
                   </div>
                 </div>
               ))}
