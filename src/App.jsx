@@ -256,14 +256,13 @@ function App() {
 
   const handleResolveIncident = async (incidentId) => {
     try {
-      // Try API first, fallback to localStorage
-      try {
+      // Only use API if not in localStorage mode
+      if (!usingLocalStorage) {
         await api.resolveIncident(incidentId);
         await loadData();
         alert('Incident resolved!');
-      } catch (apiError) {
-        console.warn('API failed, using localStorage:', apiError);
-        // Fallback to localStorage
+      } else {
+        // Fallback to localStorage only if in localStorage mode
         const updatedIncidents = incidents.map(i => 
           i.id === incidentId ? { ...i, pending: false } : i
         );
@@ -273,7 +272,24 @@ function App() {
       }
     } catch (error) {
       console.error('Failed to resolve incident:', error);
-      alert('Failed to resolve incident. Please try again.');
+      const errorMsg = error.response?.data?.error || error.message || 'Unknown error';
+      
+      // If it's a 403 (forbidden), user needs to be admin
+      if (error.response?.status === 403) {
+        alert('Admin access required to resolve incidents. Please log in as admin.');
+      } else if (error.response?.status) {
+        // Other API error
+        alert(`Failed to resolve incident: ${errorMsg}`);
+      } else {
+        // Network/connection error - fallback to localStorage if API unavailable
+        console.warn('API unavailable, using localStorage:', error);
+        const updatedIncidents = incidents.map(i => 
+          i.id === incidentId ? { ...i, pending: false } : i
+        );
+        setIncidents(updatedIncidents);
+        localStorage.setItem('incidents', JSON.stringify(updatedIncidents));
+        alert('Incident resolved! (Using local storage - API unavailable)');
+      }
     }
   };
 
