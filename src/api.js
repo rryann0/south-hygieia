@@ -57,6 +57,8 @@ const api = {
   resolveIncident: async (incidentId) => {
     const response = await axios.post(`${API_BASE_URL}/incidents/resolve`, {
       incidentId
+    }, {
+      withCredentials: true
     });
     return response.data;
   },

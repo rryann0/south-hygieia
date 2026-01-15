@@ -158,8 +158,8 @@ app.use(session({
   cookie: {
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict'
+    secure: false, // Set to false for HTTP (set to true only if using HTTPS)
+    sameSite: 'lax' // Changed from 'strict' to 'lax' for better compatibility
   }
 }));
 
