@@ -9,6 +9,7 @@ const Database = require('better-sqlite3');
 const bcrypt = require('bcrypt');
 const winston = require('winston');
 const DailyRotateFile = require('winston-daily-rotate-file');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -169,6 +170,90 @@ const limiter = rateLimit({
   max: 100
 });
 app.use('/api/', limiter);
+
+// ============ EMAIL SETUP ============
+let transporter = null;
+
+// Initialize email transporter if SMTP is configured
+if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+  transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT) || 587,
+    secure: false, // true for 465, false for other ports
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
+    }
+  });
+
+  // Verify connection
+  transporter.verify((error, success) => {
+    if (error) {
+      logger.error('Email transporter error:', error);
+    } else {
+      logger.info('Email transporter ready');
+    }
+  });
+} else {
+  logger.warn('SMTP not configured - email notifications disabled');
+}
+
+// Function to send incident notification email
+const sendIncidentEmail = async (incidentData) => {
+  if (!transporter || !process.env.ADMIN_EMAIL) {
+    logger.warn('Email not configured, skipping notification');
+    return;
+  }
+
+  try {
+    const mailOptions = {
+      from: process.env.SMTP_USER,
+      to: process.env.ADMIN_EMAIL,
+      subject: `🚨 New Incident Reported: ${incidentData.restroomName}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #dc2626;">🚨 New Incident Reported</h2>
+          
+          <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="margin-top: 0;">Incident Details</h3>
+            <p><strong>Restroom:</strong> ${incidentData.restroomName}</p>
+            <p><strong>Reported by:</strong> ${incidentData.custodianName}</p>
+            <p><strong>Severity:</strong> ${incidentData.severity || 'medium'}</p>
+            <p><strong>Time:</strong> ${new Date(incidentData.timestamp).toLocaleString()}</p>
+            <p><strong>Last checked:</strong> ${incidentData.lastChecked || 'Never'}</p>
+          </div>
+          
+          <div style="background-color: #fef2f2; padding: 20px; border-radius: 8px; border-left: 4px solid #dc2626;">
+            <h3 style="margin-top: 0;">Description</h3>
+            <p style="white-space: pre-wrap;">${incidentData.description}</p>
+          </div>
+          
+          <p style="margin-top: 30px; color: #6b7280; font-size: 12px;">
+            Please log in to the Restroom Management System to resolve this incident.
+          </p>
+        </div>
+      `,
+      text: `
+New Incident Reported
+
+Restroom: ${incidentData.restroomName}
+Reported by: ${incidentData.custodianName}
+Severity: ${incidentData.severity || 'medium'}
+Time: ${new Date(incidentData.timestamp).toLocaleString()}
+Last checked: ${incidentData.lastChecked || 'Never'}
+
+Description:
+${incidentData.description}
+      `
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    logger.info(`Incident notification email sent: ${info.messageId}`);
+  } catch (error) {
+    logger.error('Error sending incident email:', error);
+    // Don't throw - we don't want email failures to prevent incident reporting
+  }
+};
 
 // ============ MIDDLEWARE ============
 
@@ -338,7 +423,19 @@ app.post('/api/incidents', (req, res) => {
 
     logger.info(`Incident reported: ${id} for ${restroomId}`);
 
-    // TODO: Send notifications (Twilio/Nodemailer/Web Push)
+    // Get custodian and restroom names for email
+    const custodian = db.prepare('SELECT name FROM custodians WHERE id = ?').get(custodianId);
+    const restroom = db.prepare('SELECT name FROM restrooms WHERE id = ?').get(restroomId);
+
+    // Send email notification (async, don't wait for it)
+    sendIncidentEmail({
+      restroomName: restroom?.name || restroomId,
+      custodianName: custodian?.name || custodianId,
+      description: description,
+      severity: severity || 'medium',
+      timestamp: timestamp,
+      lastChecked: lastCheck?.timestamp ? new Date(lastCheck.timestamp).toLocaleString() : 'Never'
+    }).catch(err => logger.error('Failed to send incident email:', err));
 
     res.status(201).json({ success: true, id });
   } catch (error) {
