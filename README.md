@@ -218,6 +218,7 @@ NODE_ENV=production
 DB_PATH=./cleanliness.db
 SESSION_SECRET=your_secure_random_string_here
 FRONTEND_URL=http://192.168.4.18
+USER_PASSWORD=your_secure_user_password_here
 ADMIN_PASSWORD=your_secure_admin_password_here
 
 # Email (optional)

@@ -9,7 +9,6 @@ const Database = require('better-sqlite3');
 const bcrypt = require('bcrypt');
 const winston = require('winston');
 const DailyRotateFile = require('winston-daily-rotate-file');
-const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -171,91 +170,16 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// ============ EMAIL SETUP ============
-let transporter = null;
+// ============ MIDDLEWARE ============
 
-// Initialize email transporter if SMTP is configured
-if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-  transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT) || 587,
-    secure: false, // true for 465, false for other ports
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
-    }
-  });
-
-  // Verify connection
-  transporter.verify((error, success) => {
-    if (error) {
-      logger.error('Email transporter error:', error);
-    } else {
-      logger.info('Email transporter ready');
-    }
-  });
-} else {
-  logger.warn('SMTP not configured - email notifications disabled');
-}
-
-// Function to send incident notification email
-const sendIncidentEmail = async (incidentData) => {
-  if (!transporter || !process.env.ADMIN_EMAIL) {
-    logger.warn('Email not configured, skipping notification');
-    return;
-  }
-
-  try {
-    const mailOptions = {
-      from: process.env.SMTP_USER,
-      to: process.env.ADMIN_EMAIL,
-      subject: `🚨 New Incident Reported: ${incidentData.restroomName}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #dc2626;">🚨 New Incident Reported</h2>
-          
-          <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <h3 style="margin-top: 0;">Incident Details</h3>
-            <p><strong>Restroom:</strong> ${incidentData.restroomName}</p>
-            <p><strong>Reported by:</strong> ${incidentData.custodianName}</p>
-            <p><strong>Severity:</strong> ${incidentData.severity || 'medium'}</p>
-            <p><strong>Time:</strong> ${new Date(incidentData.timestamp).toLocaleString()}</p>
-            <p><strong>Last checked:</strong> ${incidentData.lastChecked || 'Never'}</p>
-          </div>
-          
-          <div style="background-color: #fef2f2; padding: 20px; border-radius: 8px; border-left: 4px solid #dc2626;">
-            <h3 style="margin-top: 0;">Description</h3>
-            <p style="white-space: pre-wrap;">${incidentData.description}</p>
-          </div>
-          
-          <p style="margin-top: 30px; color: #6b7280; font-size: 12px;">
-            Please log in to the Restroom Management System to resolve this incident.
-          </p>
-        </div>
-      `,
-      text: `
-New Incident Reported
-
-Restroom: ${incidentData.restroomName}
-Reported by: ${incidentData.custodianName}
-Severity: ${incidentData.severity || 'medium'}
-Time: ${new Date(incidentData.timestamp).toLocaleString()}
-Last checked: ${incidentData.lastChecked || 'Never'}
-
-Description:
-${incidentData.description}
-      `
-    };
-
-    const info = await transporter.sendMail(mailOptions);
-    logger.info(`Incident notification email sent: ${info.messageId}`);
-  } catch (error) {
-    logger.error('Error sending incident email:', error);
-    // Don't throw - we don't want email failures to prevent incident reporting
+// Check if user is authenticated (middleware)
+const isAuthenticated = (req, res, next) => {
+  if (req.session.isAuthenticated) {
+    next();
+  } else {
+    res.status(401).json({ error: 'Authentication required' });
   }
 };
-
-// ============ MIDDLEWARE ============
 
 // Check if user is admin (middleware)
 const isAdmin = (req, res, next) => {
@@ -268,9 +192,45 @@ const isAdmin = (req, res, next) => {
 
 // ============ API ROUTES ============
 
-// Health check
+// Health check (no auth required)
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// User login
+app.post('/api/auth/login', (req, res) => {
+  const { password } = req.body;
+  const userPassword = process.env.USER_PASSWORD || process.env.ADMIN_PASSWORD; // Fallback to admin password if user password not set
+
+  if (!userPassword) {
+    logger.error('USER_PASSWORD not set in environment variables');
+    return res.status(500).json({ error: 'User password not configured' });
+  }
+
+  if (password === userPassword) {
+    req.session.isAuthenticated = true;
+    logger.info('User login successful');
+    res.json({ success: true, message: 'Login successful' });
+  } else {
+    logger.warn('Failed user login attempt');
+    res.status(401).json({ error: 'Invalid password' });
+  }
+});
+
+// User logout
+app.post('/api/auth/logout', (req, res) => {
+  req.session.isAuthenticated = false;
+  req.session.isAdmin = false; // Also log out admin
+  logger.info('User logged out');
+  res.json({ success: true, message: 'Logged out' });
+});
+
+// Check authentication status
+app.get('/api/auth/status', (req, res) => {
+  res.json({ 
+    isAuthenticated: !!req.session.isAuthenticated,
+    isAdmin: !!req.session.isAdmin 
+  });
 });
 
 // Check admin status
@@ -305,8 +265,8 @@ app.post('/api/admin/logout', (req, res) => {
   res.json({ success: true, message: 'Logged out' });
 });
 
-// Get all restrooms
-app.get('/api/restrooms', (req, res) => {
+// Get all restrooms (require authentication)
+app.get('/api/restrooms', isAuthenticated, (req, res) => {
   try {
     const restrooms = db.prepare('SELECT * FROM restrooms ORDER BY name').all();
     res.json(restrooms);
@@ -316,8 +276,8 @@ app.get('/api/restrooms', (req, res) => {
   }
 });
 
-// Get all custodians
-app.get('/api/custodians', (req, res) => {
+// Get all custodians (require authentication)
+app.get('/api/custodians', isAuthenticated, (req, res) => {
   try {
     const custodians = db.prepare('SELECT id, name, gender FROM custodians ORDER BY name').all();
     res.json(custodians);
@@ -327,8 +287,8 @@ app.get('/api/custodians', (req, res) => {
   }
 });
 
-// Get all checks
-app.get('/api/checks', (req, res) => {
+// Get all checks (require authentication)
+app.get('/api/checks', isAuthenticated, (req, res) => {
   try {
     const checks = db.prepare(`
       SELECT c.*, cu.name as custodian, r.name as restroom
@@ -345,8 +305,8 @@ app.get('/api/checks', (req, res) => {
   }
 });
 
-// Log a check
-app.post('/api/checks', (req, res) => {
+// Log a check (require authentication)
+app.post('/api/checks', isAuthenticated, (req, res) => {
   try {
     const { custodianId, restroomId, timestamp, notes } = req.body;
 
@@ -380,8 +340,8 @@ app.post('/api/checks', (req, res) => {
   }
 });
 
-// Get all incidents
-app.get('/api/incidents', (req, res) => {
+// Get all incidents (require authentication)
+app.get('/api/incidents', isAuthenticated, (req, res) => {
   try {
     const incidents = db.prepare(`
       SELECT i.*, cu.name as custodian, r.name as restroom
@@ -397,8 +357,8 @@ app.get('/api/incidents', (req, res) => {
   }
 });
 
-// Report incident
-app.post('/api/incidents', (req, res) => {
+// Report incident (require authentication)
+app.post('/api/incidents', isAuthenticated, (req, res) => {
   try {
     const { custodianId, restroomId, description, severity, timestamp } = req.body;
 
@@ -423,19 +383,7 @@ app.post('/api/incidents', (req, res) => {
 
     logger.info(`Incident reported: ${id} for ${restroomId}`);
 
-    // Get custodian and restroom names for email
-    const custodian = db.prepare('SELECT name FROM custodians WHERE id = ?').get(custodianId);
-    const restroom = db.prepare('SELECT name FROM restrooms WHERE id = ?').get(restroomId);
-
-    // Send email notification (async, don't wait for it)
-    sendIncidentEmail({
-      restroomName: restroom?.name || restroomId,
-      custodianName: custodian?.name || custodianId,
-      description: description,
-      severity: severity || 'medium',
-      timestamp: timestamp,
-      lastChecked: lastCheck?.timestamp ? new Date(lastCheck.timestamp).toLocaleString() : 'Never'
-    }).catch(err => logger.error('Failed to send incident email:', err));
+    // TODO: Send notifications (Twilio/Nodemailer/Web Push)
 
     res.status(201).json({ success: true, id });
   } catch (error) {

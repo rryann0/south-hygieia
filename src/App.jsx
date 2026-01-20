@@ -21,25 +21,65 @@ function App() {
   const [usingLocalStorage, setUsingLocalStorage] = useState(false);
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showLoginScreen, setShowLoginScreen] = useState(true);
+  const [loginPassword, setLoginPassword] = useState('');
 
   // Load data on mount
   useEffect(() => {
-    loadData();
-    checkAdminStatus();
+    checkAuthStatus();
   }, []);
 
-  // Auto-refresh data every 30 seconds
+  // Load data after authentication
   useEffect(() => {
+    if (isAuthenticated && !usingLocalStorage) {
+      loadData();
+      checkAdminStatus();
+    }
+  }, [isAuthenticated]);
+
+  // Auto-refresh data every 30 seconds (only when authenticated)
+  useEffect(() => {
+    if (!isAuthenticated && !usingLocalStorage) return;
+
     const interval = setInterval(() => {
       // Refresh data silently (without showing loading spinner)
-      loadData(false).catch(err => console.error('Auto-refresh error:', err));
-      checkAdminStatus();
+      if (isAuthenticated || usingLocalStorage) {
+        loadData(false).catch(err => console.error('Auto-refresh error:', err));
+        if (!usingLocalStorage) {
+          checkAdminStatus();
+        }
+      }
     }, 30000); // Refresh every 30 seconds
 
     // Cleanup interval on unmount
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run once on mount
+  }, [isAuthenticated, usingLocalStorage]); // Re-run when auth status changes
+
+  // Check authentication status
+  const checkAuthStatus = async () => {
+    try {
+      const response = await api.checkAuthStatus();
+      if (response.isAuthenticated) {
+        setIsAuthenticated(true);
+        setShowLoginScreen(false);
+        setIsAdmin(response.isAdmin || false);
+        loadData();
+        checkAdminStatus();
+      } else {
+        setIsAuthenticated(false);
+        setShowLoginScreen(true);
+      }
+    } catch (error) {
+      // If API fails, allow localStorage mode
+      console.warn('Auth check failed, allowing localStorage mode:', error);
+      setUsingLocalStorage(true);
+      setIsAuthenticated(true);
+      setShowLoginScreen(false);
+      loadData();
+    }
+  };
 
   // Check admin status from server
   const checkAdminStatus = async () => {
@@ -49,6 +89,24 @@ function App() {
     } catch (error) {
       // If API fails, fall back to localStorage mode - no admin by default
       setIsAdmin(false);
+    }
+  };
+
+  // Handle user login
+  const handleUserLogin = async () => {
+    try {
+      const response = await api.userLogin(loginPassword);
+      if (response.success) {
+        setIsAuthenticated(true);
+        setShowLoginScreen(false);
+        setLoginPassword('');
+        await loadData();
+        await checkAdminStatus();
+      }
+    } catch (error) {
+      const errorMsg = error.response?.data?.error || 'Invalid password';
+      alert(errorMsg);
+      setLoginPassword('');
     }
   };
 
@@ -338,6 +396,47 @@ function App() {
   };
 
   const pendingIncidents = incidents.filter(i => i.pending === 1 || i.pending === true);
+
+  // Show login screen if not authenticated
+  if (showLoginScreen && !usingLocalStorage) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full mx-4">
+          <div className="text-center mb-6">
+            <div className="text-5xl mb-4">🧹</div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent mb-2">
+              Restroom Management System
+            </h1>
+            <p className="text-gray-600">Please enter the password to access</p>
+          </div>
+          <div className="space-y-4">
+            <div>
+              <label className="block mb-2 font-semibold text-gray-700">Password:</label>
+              <input
+                type="password"
+                className="w-full border-2 border-gray-200 rounded-xl p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
+                placeholder="Enter password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    handleUserLogin();
+                  }
+                }}
+                autoFocus
+              />
+            </div>
+            <button
+              className="w-full bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-[1.02]"
+              onClick={handleUserLogin}
+            >
+              Login
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

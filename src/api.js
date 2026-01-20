@@ -85,6 +85,30 @@ const api = {
       withCredentials: true
     });
     return response.data;
+  },
+
+  // User authentication
+  checkAuthStatus: async () => {
+    const response = await axios.get(`${API_BASE_URL}/auth/status`, {
+      withCredentials: true
+    });
+    return response.data;
+  },
+
+  userLogin: async (password) => {
+    const response = await axios.post(`${API_BASE_URL}/auth/login`, {
+      password
+    }, {
+      withCredentials: true
+    });
+    return response.data;
+  },
+
+  userLogout: async () => {
+    const response = await axios.post(`${API_BASE_URL}/auth/logout`, {}, {
+      withCredentials: true
+    });
+    return response.data;
   }
 };
 
