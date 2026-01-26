@@ -22,14 +22,13 @@ function App() {
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [showLoginScreen, setShowLoginScreen] = useState(true);
+  const [showLoginScreen, setShowLoginScreen] = useState(false); // Start as false, will be set after auth check
   const [loginPassword, setLoginPassword] = useState('');
+  const [checkingAuth, setCheckingAuth] = useState(true); // Track if we're checking auth
 
   // Load data on mount - always check auth status first
   useEffect(() => {
-    // Reset authentication state on mount to ensure fresh check
-    setIsAuthenticated(false);
-    setShowLoginScreen(true);
+    // Check auth status without resetting state first
     checkAuthStatus();
   }, []);
 
@@ -62,6 +61,7 @@ function App() {
 
   // Check authentication status
   const checkAuthStatus = async () => {
+    setCheckingAuth(true); // Start checking
     try {
       const response = await api.checkAuthStatus();
       // Explicitly check for authentication - always require login screen if not authenticated
@@ -91,6 +91,8 @@ function App() {
         setShowLoginScreen(false);
         loadData();
       }
+    } finally {
+      setCheckingAuth(false); // Done checking
     }
   };
 
@@ -409,6 +411,18 @@ function App() {
   };
 
   const pendingIncidents = incidents.filter(i => i.pending === 1 || i.pending === true);
+
+  // Show loading screen while checking auth
+  if (checkingAuth && !usingLocalStorage) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+        <div className="text-center">
+          <div className="text-4xl mb-4">🧹</div>
+          <div className="text-2xl font-semibold text-gray-700">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   // Show login screen if not authenticated
   if (showLoginScreen && !usingLocalStorage) {
