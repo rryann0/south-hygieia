@@ -197,17 +197,18 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// User login
+// User login (staff access to the app)
 app.post('/api/auth/login', (req, res) => {
-  const { password } = req.body;
-  const userPassword = process.env.USER_PASSWORD || process.env.ADMIN_PASSWORD; // Fallback to admin password if user password not set
+  const raw = req.body?.password;
+  const password = (typeof raw === 'string' ? raw : '').trim();
+  const userPassword = (process.env.USER_PASSWORD || process.env.ADMIN_PASSWORD || '').trim();
 
   if (!userPassword) {
     logger.error('USER_PASSWORD not set in environment variables');
     return res.status(500).json({ error: 'User password not configured' });
   }
 
-  if (password === userPassword) {
+  if (password && password === userPassword) {
     req.session.isAuthenticated = true;
     logger.info('User login successful');
     res.json({ success: true, message: 'Login successful' });
@@ -251,15 +252,16 @@ app.get('/api/admin/status', (req, res) => {
 
 // Admin login
 app.post('/api/admin/login', (req, res) => {
-  const { password } = req.body;
-  const adminPassword = process.env.ADMIN_PASSWORD;
+  const raw = req.body?.password;
+  const password = (typeof raw === 'string' ? raw : '').trim();
+  const adminPassword = (process.env.ADMIN_PASSWORD || '').trim();
 
   if (!adminPassword) {
     logger.error('ADMIN_PASSWORD not set in environment variables');
     return res.status(500).json({ error: 'Admin password not configured' });
   }
 
-  if (password === adminPassword) {
+  if (password && password === adminPassword) {
     req.session.isAdmin = true;
     logger.info('Admin login successful');
     res.json({ success: true, message: 'Admin access granted' });
