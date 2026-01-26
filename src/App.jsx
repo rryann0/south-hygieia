@@ -18,7 +18,6 @@ function App() {
   const [selectedRestroom2, setSelectedRestroom2] = useState('');
   const [incidentDescription, setIncidentDescription] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
-  const [usingLocalStorage, setUsingLocalStorage] = useState(false);
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -34,7 +33,7 @@ function App() {
 
   // Load data after authentication
   useEffect(() => {
-    if (isAuthenticated && !usingLocalStorage) {
+    if (isAuthenticated) {
       loadData();
       checkAdminStatus();
     }
@@ -42,57 +41,44 @@ function App() {
 
   // Auto-refresh data every 30 seconds (only when authenticated)
   useEffect(() => {
-    if (!isAuthenticated && !usingLocalStorage) return;
+    if (!isAuthenticated) return;
 
     const interval = setInterval(() => {
-      // Refresh data silently (without showing loading spinner)
-      if (isAuthenticated || usingLocalStorage) {
-        loadData(false).catch(err => console.error('Auto-refresh error:', err));
-        if (!usingLocalStorage) {
-          checkAdminStatus();
-        }
-      }
-    }, 30000); // Refresh every 30 seconds
+      loadData(false).catch(err => console.error('Auto-refresh error:', err));
+      checkAdminStatus();
+    }, 30000);
 
-    // Cleanup interval on unmount
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, usingLocalStorage]); // Re-run when auth status changes
+  }, [isAuthenticated]);
 
   // Check authentication status
   const checkAuthStatus = async () => {
-    setCheckingAuth(true); // Start checking
+    setCheckingAuth(true);
     try {
       const response = await api.checkAuthStatus();
-      // Explicitly check for authentication - always require login screen if not authenticated
       if (response.isAuthenticated === true) {
         setIsAuthenticated(true);
         setShowLoginScreen(false);
         setIsAdmin(response.isAdmin || false);
-        if (!usingLocalStorage) {
-          loadData();
-          checkAdminStatus();
-        }
+        loadData();
+        checkAdminStatus();
       } else {
-        // Not authenticated - show login screen
         setIsAuthenticated(false);
         setShowLoginScreen(true);
       }
     } catch (error) {
-      // On error, check if it's a 401 (unauthorized) - then show login
       if (error.response?.status === 401) {
         setIsAuthenticated(false);
         setShowLoginScreen(true);
       } else {
-        // Network/other errors - allow localStorage mode as fallback
-        console.warn('Auth check failed, allowing localStorage mode:', error);
-        setUsingLocalStorage(true);
-        setIsAuthenticated(true);
-        setShowLoginScreen(false);
-        loadData();
+        // Backend unavailable - show login screen with error
+        console.error('Auth check failed:', error);
+        setIsAuthenticated(false);
+        setShowLoginScreen(true);
       }
     } finally {
-      setCheckingAuth(false); // Done checking
+      setCheckingAuth(false);
     }
   };
 
@@ -102,7 +88,6 @@ function App() {
       const response = await api.checkAdminStatus();
       setIsAdmin(response.isAdmin || false);
     } catch (error) {
-      // If API fails, fall back to localStorage mode - no admin by default
       setIsAdmin(false);
     }
   };
@@ -142,7 +127,6 @@ function App() {
       setLogs(checksData);
       setIncidents(incidentsData);
       
-      // Set initial selections
       if (custodiansData.length > 0 && !selectedCustodian) {
         setSelectedCustodian(custodiansData[0].name);
       }
@@ -152,50 +136,7 @@ function App() {
       }
     } catch (error) {
       console.error('Failed to load data from API:', error);
-      // Fallback to localStorage if API fails
-      console.log('Falling back to localStorage...');
-      setUsingLocalStorage(true);
-      const storedLogs = JSON.parse(localStorage.getItem('logs')) || [];
-      const storedIncidents = JSON.parse(localStorage.getItem('incidents')) || [];
-      
-      // Use default data structure
-      const defaultRestrooms = [
-        // Boys' restrooms
-        { id: 'boys-locker-room', name: "Boys' Locker Room", building: 'Athletics', floor: 1 },
-        { id: 'g-wing', name: 'G Wing', building: 'G Wing', floor: 1 },
-        { id: 'd-wing', name: 'D Wing', building: 'D Wing', floor: 1 },
-        { id: 'l-wing', name: 'L Wing', building: 'L Wing', floor: 1 },
-        { id: 'n-wing', name: 'N Wing', building: 'N Wing', floor: 1 },
-        // Girls' restrooms
-        { id: 'girls-locker-room', name: "Girls' Locker Room", building: 'Athletics', floor: 1 },
-        { id: 'h-wing', name: 'H Wing', building: 'H Wing', floor: 1 },
-        { id: 'j-wing', name: 'J Wing', building: 'J Wing', floor: 1 },
-        { id: 'c-wing', name: 'C Wing', building: 'C Wing', floor: 1 },
-        { id: 'e-wing', name: 'E Wing', building: 'E Wing', floor: 1 },
-        { id: 'm-wing', name: 'M Wing', building: 'M Wing', floor: 1 }
-      ];
-      
-      const defaultCustodians = [
-        { id: 'shantelle', name: 'Shantelle', gender: 'female' },
-        { id: 'jalessa', name: 'Jalessa', gender: 'female' },
-        { id: 'joel', name: 'Joel', gender: 'male' },
-        { id: 'javon', name: 'Javon', gender: 'male' },
-        { id: 'rey', name: 'Rey', gender: 'male' }
-      ];
-      
-      setRestrooms(defaultRestrooms);
-      setCustodians(defaultCustodians);
-      setLogs(storedLogs);
-      setIncidents(storedIncidents);
-      
-      // Set initial selections
-      if (defaultCustodians.length > 0 && !selectedCustodian) {
-        setSelectedCustodian(defaultCustodians[0].name);
-      }
-      if (defaultRestrooms.length > 0 && !selectedRestroom) {
-        setSelectedRestroom(defaultRestrooms[0].name);
-        setSelectedRestroom2(defaultRestrooms[0].name);
-      }
+      alert('Failed to load data from server. Please check your connection and refresh.');
     } finally {
       setLoading(false);
     }
@@ -257,28 +198,13 @@ function App() {
         return;
       }
 
-      // Try API first, fallback to localStorage
-      try {
-        await api.logCheck(custodian.id, restroom.id);
-        await loadData();
-        alert('Check logged successfully!');
-      } catch (apiError) {
-        console.warn('API failed, using localStorage:', apiError);
-        // Fallback to localStorage
-    const newLog = {
-      id: Date.now(),
-      custodian: selectedCustodian,
-      restroom: selectedRestroom,
-          timestamp: new Date().toISOString(),
-    };
-        const updatedLogs = [newLog, ...logs];
-        setLogs(updatedLogs);
-        localStorage.setItem('logs', JSON.stringify(updatedLogs));
-        alert('Check logged successfully! (Using local storage)');
-      }
+      await api.logCheck(custodian.id, restroom.id);
+      await loadData();
+      alert('Check logged successfully!');
     } catch (error) {
       console.error('Failed to log check:', error);
-      alert('Failed to log check. Please try again.');
+      const msg = error.response?.data?.error || 'Failed to log check. Please try again.';
+      alert(msg);
     }
   };
 
@@ -297,103 +223,45 @@ function App() {
         return;
       }
 
-      // Try API first, fallback to localStorage
-      try {
-        await api.reportIncident(custodian.id, restroom.id, incidentDescription);
-        await loadData();
-        setIncidentDescription('');
-        alert('Incident reported successfully!');
-      } catch (apiError) {
-        console.warn('API failed, using localStorage:', apiError);
-        // Fallback to localStorage
-    const newIncident = {
-      id: Date.now(),
-      custodian: selectedCustodian,
-      restroom: selectedRestroom2,
-      description: incidentDescription,
-          timestamp: new Date().toISOString(),
-      lastChecked: getLastCheckTime(selectedRestroom2),
-      pending: true,
-    };
-        const updatedIncidents = [newIncident, ...incidents];
-        setIncidents(updatedIncidents);
-        localStorage.setItem('incidents', JSON.stringify(updatedIncidents));
-    setIncidentDescription('');
-        alert('Incident reported successfully! (Using local storage)');
-      }
+      await api.reportIncident(custodian.id, restroom.id, incidentDescription);
+      await loadData();
+      setIncidentDescription('');
+      alert('Incident reported successfully!');
     } catch (error) {
       console.error('Failed to report incident:', error);
-      alert('Failed to report incident. Please try again.');
+      const msg = error.response?.data?.error || 'Failed to report incident. Please try again.';
+      alert(msg);
     }
   };
 
   const handleResolveIncident = async (incidentId) => {
     try {
-      // Only use API if not in localStorage mode
-      if (!usingLocalStorage) {
-        await api.resolveIncident(incidentId);
-        await loadData();
-        alert('Incident resolved!');
-      } else {
-        // Fallback to localStorage only if in localStorage mode
-        const updatedIncidents = incidents.map(i => 
-          i.id === incidentId ? { ...i, pending: false } : i
-        );
-        setIncidents(updatedIncidents);
-        localStorage.setItem('incidents', JSON.stringify(updatedIncidents));
-        alert('Incident resolved! (Using local storage)');
-      }
+      await api.resolveIncident(incidentId);
+      await loadData();
+      alert('Incident resolved!');
     } catch (error) {
       console.error('Failed to resolve incident:', error);
       const errorMsg = error.response?.data?.error || error.message || 'Unknown error';
-      
-      // If it's a 403 (forbidden), user needs to be admin
       if (error.response?.status === 403) {
         alert('Admin access required to resolve incidents. Please log in as admin.');
-      } else if (error.response?.status) {
-        // Other API error
-        alert(`Failed to resolve incident: ${errorMsg}`);
       } else {
-        // Network/connection error - fallback to localStorage if API unavailable
-        console.warn('API unavailable, using localStorage:', error);
-        const updatedIncidents = incidents.map(i => 
-          i.id === incidentId ? { ...i, pending: false } : i
-        );
-        setIncidents(updatedIncidents);
-        localStorage.setItem('incidents', JSON.stringify(updatedIncidents));
-        alert('Incident resolved! (Using local storage - API unavailable)');
+        alert(`Failed to resolve incident: ${errorMsg}`);
       }
     }
   };
 
   const handleAdminLogin = async () => {
     try {
-      // Try API first
-      try {
-        const response = await api.adminLogin(passwordInput);
-        if (response.success) {
-          setIsAdmin(true);
-          setShowPasswordPrompt(false);
-          setPasswordInput('');
-          alert('Admin access granted!');
-          return;
-        }
-      } catch (apiError) {
-        // If API fails and we're in localStorage mode, we can't verify password
-        // In this case, we'll just show an error
-        if (usingLocalStorage) {
-          alert('Admin authentication requires backend server connection.');
-          setPasswordInput('');
-          setShowPasswordPrompt(false);
-          return;
-        }
-        const errorMsg = apiError.response?.data?.error || 'Invalid password';
-        alert(errorMsg);
+      const response = await api.adminLogin(passwordInput);
+      if (response.success) {
+        setIsAdmin(true);
+        setShowPasswordPrompt(false);
         setPasswordInput('');
+        alert('Admin access granted!');
       }
     } catch (error) {
-      console.error('Admin login error:', error);
-      alert('Failed to authenticate. Please try again.');
+      const errorMsg = error.response?.data?.error || 'Invalid password';
+      alert(errorMsg);
       setPasswordInput('');
     }
   };
@@ -413,7 +281,7 @@ function App() {
   const pendingIncidents = incidents.filter(i => i.pending === 1 || i.pending === true);
 
   // Show loading screen while checking auth
-  if (checkingAuth && !usingLocalStorage) {
+  if (checkingAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
         <div className="text-center">
@@ -425,7 +293,7 @@ function App() {
   }
 
   // Show login screen if not authenticated
-  if (showLoginScreen && !usingLocalStorage) {
+  if (showLoginScreen) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full mx-4">
@@ -487,11 +355,6 @@ function App() {
                 🧹 Restroom Management System
               </h1>
               <p className="text-gray-600">Track checks and report incidents</p>
-              {usingLocalStorage && (
-                <p className="text-yellow-600 text-sm mt-1 font-semibold">
-                  ⚠️ Using local storage mode (Backend server not available)
-                </p>
-              )}
               <p className="text-xs text-gray-400 mt-1">🔄 Auto-sync enabled • Updates every 30 seconds</p>
             </div>
         <button
