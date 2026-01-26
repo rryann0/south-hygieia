@@ -6,12 +6,26 @@ const rateLimit = require('express-rate-limit');
 const session = require('express-session');
 const SQLiteStore = require('connect-sqlite3')(session);
 const Database = require('better-sqlite3');
-const bcrypt = require('bcrypt');
 const winston = require('winston');
 const DailyRotateFile = require('winston-daily-rotate-file');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Ensure required directories exist
+const ensureDirectories = () => {
+  const dirs = ['logs', 'data'];
+  dirs.forEach(dir => {
+    const dirPath = path.join(__dirname, dir);
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+      console.log(`Created directory: ${dirPath}`);
+    }
+  });
+};
+ensureDirectories();
 
 // ============ LOGGING SETUP ============
 const logger = winston.createLogger({
@@ -170,8 +184,6 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// ============ MIDDLEWARE ============
-
 // Check if user is authenticated (middleware)
 const isAuthenticated = (req, res, next) => {
   if (req.session.isAuthenticated) {
@@ -321,12 +333,15 @@ app.get('/api/checks', isAuthenticated, (req, res) => {
 // Log a check (require authentication)
 app.post('/api/checks', isAuthenticated, (req, res) => {
   try {
-    const { custodianId, restroomId, timestamp, notes } = req.body;
+    const { custodianId, restroomId, notes } = req.body;
 
     // Validate input
-    if (!custodianId || !restroomId || !timestamp) {
+    if (!custodianId || !restroomId) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
+
+    // Generate timestamp server-side for consistency
+    const timestamp = new Date().toISOString();
 
     // Check for active incident
     const activeIncident = db.prepare(
@@ -373,12 +388,15 @@ app.get('/api/incidents', isAuthenticated, (req, res) => {
 // Report incident (require authentication)
 app.post('/api/incidents', isAuthenticated, (req, res) => {
   try {
-    const { custodianId, restroomId, description, severity, timestamp } = req.body;
+    const { custodianId, restroomId, description, severity } = req.body;
 
     // Validate input
-    if (!custodianId || !restroomId || !description || !timestamp) {
+    if (!custodianId || !restroomId || !description) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
+
+    // Generate timestamp server-side for consistency
+    const timestamp = new Date().toISOString();
 
     // Get last check time
     const lastCheck = db.prepare(`
@@ -406,7 +424,7 @@ app.post('/api/incidents', isAuthenticated, (req, res) => {
 });
 
 // Resolve incident (admin only)
-app.post('/api/incidents/resolve', isAdmin, (req, res) => {
+app.post('/api/incidents/resolve', isAuthenticated, isAdmin, (req, res) => {
   try {
     const { incidentId } = req.body;
 

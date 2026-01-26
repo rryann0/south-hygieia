@@ -5,6 +5,24 @@ const API_BASE_URL = import.meta.env.DEV ? 'http://localhost:3000/api' : '/api';
 // Configure axios to send credentials (cookies) with all requests
 axios.defaults.withCredentials = true;
 
+// Add request timeout
+axios.defaults.timeout = 10000; // 10 seconds
+
+// Add response interceptor for better error handling
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.code === 'ECONNABORTED') {
+      error.message = 'Request timeout - server is taking too long to respond';
+    } else if (error.code === 'ERR_NETWORK') {
+      error.message = 'Network error - please check your connection';
+    } else if (!error.response) {
+      error.message = 'Server unavailable - please try again later';
+    }
+    return Promise.reject(error);
+  }
+);
+
 const api = {
   // Get all restrooms
   getRestrooms: async () => {
@@ -29,7 +47,6 @@ const api = {
     const response = await axios.post(`${API_BASE_URL}/checks`, {
       custodianId,
       restroomId,
-      timestamp: new Date().toISOString(),
       notes
     });
     return response.data;
@@ -47,8 +64,7 @@ const api = {
       custodianId,
       restroomId,
       description,
-      severity,
-      timestamp: new Date().toISOString()
+      severity
     });
     return response.data;
   },

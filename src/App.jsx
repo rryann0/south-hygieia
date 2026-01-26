@@ -1,9 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import api from './api';
 
-// Gender mapping (move to backend later if needed)
-const femaleCustodians = ['Shantelle', 'Jalessa'];
-const maleCustodians = ['Joel', 'Javon', 'Rey'];
+// Restroom gender mapping
 const femaleRestrooms = ["Girls' Locker Room", 'H Wing', 'J Wing', 'C Wing', 'E Wing', 'M Wing'];
 const maleRestrooms = ["Boys' Locker Room", 'G Wing', 'D Wing', 'L Wing', 'N Wing'];
 
@@ -104,7 +102,14 @@ function App() {
         await checkAdminStatus();
       }
     } catch (error) {
-      const errorMsg = error.response?.data?.error || 'Invalid password';
+      let errorMsg = 'Invalid password';
+      if (error.response?.data?.error) {
+        errorMsg = error.response.data.error;
+      } else if (error.message && !error.message.includes('Network')) {
+        errorMsg = error.message;
+      } else if (error.code === 'ERR_NETWORK') {
+        errorMsg = 'Network error. Please check your connection.';
+      }
       alert(errorMsg);
       setLoginPassword('');
     }
@@ -136,7 +141,21 @@ function App() {
       }
     } catch (error) {
       console.error('Failed to load data from API:', error);
-      alert('Failed to load data from server. Please check your connection and refresh.');
+      let errorMsg = 'Failed to load data from server. Please check your connection and refresh.';
+      if (error.response?.status === 401) {
+        // Authentication error - don't show alert, auth check will handle it
+        setIsAuthenticated(false);
+        setShowLoginScreen(true);
+        return;
+      } else if (error.message) {
+        errorMsg = error.message;
+      } else if (error.code === 'ERR_NETWORK') {
+        errorMsg = 'Network error. Please check your connection.';
+      }
+      // Only show alert if not an auth error
+      if (error.response?.status !== 401) {
+        alert(errorMsg);
+      }
     } finally {
       setLoading(false);
     }
@@ -144,15 +163,20 @@ function App() {
 
   // Get available restrooms based on custodian gender
   const getAvailableRestrooms = (custodianName) => {
-    if (femaleCustodians.includes(custodianName)) {
+    const custodian = custodians.find(c => c.name === custodianName);
+    if (!custodian || !custodian.gender) {
+      return restrooms; // Fallback to all restrooms if gender not found
+    }
+    
+    if (custodian.gender.toLowerCase() === 'female') {
       return restrooms.filter(r => femaleRestrooms.includes(r.name));
-    } else if (maleCustodians.includes(custodianName)) {
+    } else if (custodian.gender.toLowerCase() === 'male') {
       return restrooms.filter(r => maleRestrooms.includes(r.name));
     }
     return restrooms;
   };
 
-  const availableRestrooms = getAvailableRestrooms(selectedCustodian);
+  const availableRestrooms = useMemo(() => getAvailableRestrooms(selectedCustodian), [selectedCustodian, custodians, restrooms]);
 
   // Update selected restrooms when custodian changes
   useEffect(() => {
@@ -166,16 +190,30 @@ function App() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCustodian]);
+  }, [selectedCustodian, custodians, restrooms]);
+
+  // Memoize last check times to avoid recalculating on every render
+  const lastCheckTimes = useMemo(() => {
+    const times = {};
+    restrooms.forEach(restroom => {
+      const logsForRestroom = logs.filter(l => l.restroom === restroom.name);
+      if (logsForRestroom.length === 0) {
+        times[restroom.name] = null;
+      } else {
+        const lastLog = logsForRestroom.reduce((latest, current) =>
+          new Date(current.timestamp) > new Date(latest.timestamp) ? current : latest
+        );
+        times[restroom.name] = new Date(lastLog.timestamp);
+      }
+    });
+    return times;
+  }, [logs, restrooms]);
 
   // Helper to get the last check time for a restroom
   const getLastCheckTime = (restroomName) => {
-    const logsForRestroom = logs.filter(l => l.restroom === restroomName);
-    if (logsForRestroom.length === 0) return 'Never checked';
-    const lastLog = logsForRestroom.reduce((latest, current) =>
-      new Date(current.timestamp) > new Date(latest.timestamp) ? current : latest
-    );
-    return new Date(lastLog.timestamp).toLocaleString();
+    const time = lastCheckTimes[restroomName];
+    if (!time) return 'Never checked';
+    return time.toLocaleString();
   };
 
   // Helper to determine if a restroom has an active incident
@@ -203,7 +241,16 @@ function App() {
       alert('Check logged successfully!');
     } catch (error) {
       console.error('Failed to log check:', error);
-      const msg = error.response?.data?.error || 'Failed to log check. Please try again.';
+      let msg = 'Failed to log check. Please try again.';
+      if (error.response?.data?.error) {
+        msg = error.response.data.error;
+      } else if (error.message) {
+        msg = error.message;
+      } else if (error.code === 'ECONNABORTED') {
+        msg = 'Request timed out. Please try again.';
+      } else if (error.code === 'ERR_NETWORK') {
+        msg = 'Network error. Please check your connection.';
+      }
       alert(msg);
     }
   };
@@ -229,7 +276,16 @@ function App() {
       alert('Incident reported successfully!');
     } catch (error) {
       console.error('Failed to report incident:', error);
-      const msg = error.response?.data?.error || 'Failed to report incident. Please try again.';
+      let msg = 'Failed to report incident. Please try again.';
+      if (error.response?.data?.error) {
+        msg = error.response.data.error;
+      } else if (error.message) {
+        msg = error.message;
+      } else if (error.code === 'ECONNABORTED') {
+        msg = 'Request timed out. Please try again.';
+      } else if (error.code === 'ERR_NETWORK') {
+        msg = 'Network error. Please check your connection.';
+      }
       alert(msg);
     }
   };
@@ -241,7 +297,16 @@ function App() {
       alert('Incident resolved!');
     } catch (error) {
       console.error('Failed to resolve incident:', error);
-      const errorMsg = error.response?.data?.error || error.message || 'Unknown error';
+      let errorMsg = 'Unknown error';
+      if (error.response?.data?.error) {
+        errorMsg = error.response.data.error;
+      } else if (error.message) {
+        errorMsg = error.message;
+      } else if (error.code === 'ECONNABORTED') {
+        errorMsg = 'Request timed out. Please try again.';
+      } else if (error.code === 'ERR_NETWORK') {
+        errorMsg = 'Network error. Please check your connection.';
+      }
       if (error.response?.status === 403) {
         alert('Admin access required to resolve incidents. Please log in as admin.');
       } else {
@@ -260,7 +325,14 @@ function App() {
         alert('Admin access granted!');
       }
     } catch (error) {
-      const errorMsg = error.response?.data?.error || 'Invalid password';
+      let errorMsg = 'Invalid password';
+      if (error.response?.data?.error) {
+        errorMsg = error.response.data.error;
+      } else if (error.message && !error.message.includes('Network')) {
+        errorMsg = error.message;
+      } else if (error.code === 'ERR_NETWORK') {
+        errorMsg = 'Network error. Please check your connection.';
+      }
       alert(errorMsg);
       setPasswordInput('');
     }
@@ -273,8 +345,9 @@ function App() {
       alert('Logged out of admin mode');
     } catch (error) {
       console.error('Failed to logout:', error);
-      // Still set admin to false locally
+      // Still set admin to false locally even if logout fails
       setIsAdmin(false);
+      // Don't show error to user for logout failures
     }
   };
 
@@ -532,15 +605,17 @@ function App() {
                 <div className="space-y-2">
                   <div className="text-sm">
                     <span className="text-gray-600 font-medium">Last checked:</span>
-                    <p className="text-gray-800 font-semibold mt-1">
-                      {getLastCheckTime(restroom.name) === 'Never checked' 
-                        ? 'Never' 
-                        : new Date(getLastCheckTime(restroom.name)).toLocaleDateString()}
-                    </p>
-                    {getLastCheckTime(restroom.name) !== 'Never checked' && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        {new Date(getLastCheckTime(restroom.name)).toLocaleTimeString()}
-                      </p>
+                    {lastCheckTimes[restroom.name] ? (
+                      <>
+                        <p className="text-gray-800 font-semibold mt-1">
+                          {lastCheckTimes[restroom.name].toLocaleDateString()}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {lastCheckTimes[restroom.name].toLocaleTimeString()}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-gray-800 font-semibold mt-1">Never</p>
                     )}
                   </div>
                   <div className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
