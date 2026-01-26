@@ -140,7 +140,7 @@ seedData();
 app.use(helmet());
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? (process.env.FRONTEND_URL || 'http://192.168.4.18') 
+    ? (process.env.FRONTEND_URL || 'https://shs-hygieia.tusd.org') 
     : 'http://localhost:5173',
   credentials: true
 }));
@@ -156,9 +156,9 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    maxAge: null, // Session cookie (expires when browser closes)
     httpOnly: true,
-    secure: false, // Set to false for HTTP (set to true only if using HTTPS)
+    secure: process.env.NODE_ENV === 'production', // true for HTTPS, false for HTTP
     sameSite: 'lax' // Changed from 'strict' to 'lax' for better compatibility
   }
 }));
@@ -221,15 +221,26 @@ app.post('/api/auth/login', (req, res) => {
 app.post('/api/auth/logout', (req, res) => {
   req.session.isAuthenticated = false;
   req.session.isAdmin = false; // Also log out admin
-  logger.info('User logged out');
+  req.session.destroy((err) => {
+    if (err) {
+      logger.error('Error destroying session:', err);
+    } else {
+      logger.info('User logged out and session destroyed');
+    }
+  });
+  res.clearCookie('connect.sid'); // Clear the session cookie
   res.json({ success: true, message: 'Logged out' });
 });
 
 // Check authentication status
 app.get('/api/auth/status', (req, res) => {
+  // Explicitly check session - if session doesn't exist or isn't authenticated, return false
+  const isAuthenticated = req.session && req.session.isAuthenticated === true;
+  const isAdmin = req.session && req.session.isAdmin === true;
+  
   res.json({ 
-    isAuthenticated: !!req.session.isAuthenticated,
-    isAdmin: !!req.session.isAdmin 
+    isAuthenticated: isAuthenticated,
+    isAdmin: isAdmin 
   });
 });
 

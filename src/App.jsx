@@ -25,8 +25,11 @@ function App() {
   const [showLoginScreen, setShowLoginScreen] = useState(true);
   const [loginPassword, setLoginPassword] = useState('');
 
-  // Load data on mount
+  // Load data on mount - always check auth status first
   useEffect(() => {
+    // Reset authentication state on mount to ensure fresh check
+    setIsAuthenticated(false);
+    setShowLoginScreen(true);
     checkAuthStatus();
   }, []);
 
@@ -61,23 +64,33 @@ function App() {
   const checkAuthStatus = async () => {
     try {
       const response = await api.checkAuthStatus();
-      if (response.isAuthenticated) {
+      // Explicitly check for authentication - always require login screen if not authenticated
+      if (response.isAuthenticated === true) {
         setIsAuthenticated(true);
         setShowLoginScreen(false);
         setIsAdmin(response.isAdmin || false);
-        loadData();
-        checkAdminStatus();
+        if (!usingLocalStorage) {
+          loadData();
+          checkAdminStatus();
+        }
       } else {
+        // Not authenticated - show login screen
         setIsAuthenticated(false);
         setShowLoginScreen(true);
       }
     } catch (error) {
-      // If API fails, allow localStorage mode
-      console.warn('Auth check failed, allowing localStorage mode:', error);
-      setUsingLocalStorage(true);
-      setIsAuthenticated(true);
-      setShowLoginScreen(false);
-      loadData();
+      // On error, check if it's a 401 (unauthorized) - then show login
+      if (error.response?.status === 401) {
+        setIsAuthenticated(false);
+        setShowLoginScreen(true);
+      } else {
+        // Network/other errors - allow localStorage mode as fallback
+        console.warn('Auth check failed, allowing localStorage mode:', error);
+        setUsingLocalStorage(true);
+        setIsAuthenticated(true);
+        setShowLoginScreen(false);
+        loadData();
+      }
     }
   };
 

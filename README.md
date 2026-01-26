@@ -154,18 +154,40 @@ npm run build
 Create `/etc/nginx/sites-available/cleanliness-app`:
 
 ```nginx
+# HTTP to HTTPS redirect
 server {
     listen 80;
-    server_name 192.168.4.18;  # Replace with your IP or domain
+    server_name shs-hygieia.tusd.org;
+    
+    # Redirect all HTTP to HTTPS
+    return 301 https://$server_name$request_uri;
+}
+
+# HTTPS server block
+server {
+    listen 443 ssl http2;
+    server_name shs-hygieia.tusd.org;
+
+    # SSL Certificate paths (adjust if your certs are in a different location)
+    ssl_certificate /etc/letsencrypt/live/shs-hygieia.tusd.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/shs-hygieia.tusd.org/privkey.pem;
+    
+    # SSL Configuration (best practices)
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
 
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
     # Frontend: Serve React static files
     location / {
-        root /var/www/cleanliness-app/client;
+        root /var/www/hygieia/client;
         index index.html;
         try_files $uri $uri/ /index.html;
     }
@@ -190,6 +212,8 @@ server {
 }
 ```
 
+**Note:** If your SSL certificates are in a different location, update the `ssl_certificate` and `ssl_certificate_key` paths accordingly.
+
 Enable the site:
 
 ```bash
@@ -199,10 +223,19 @@ sudo nginx -t
 sudo systemctl restart nginx
 ```
 
-#### 6. Verify Deployment
+#### 6. Configure Domain Name (if using custom domain)
 
-- Visit `http://YOUR_SERVER_IP` in a browser
-- Test API: `curl http://YOUR_SERVER_IP/api/health`
+If using a domain name like `shs-hygieia.tusd.org`:
+
+1. **Update Nginx configuration** (see Nginx config above)
+2. **Update `.env` file**: Set `FRONTEND_URL=https://shs-hygieia.tusd.org`
+3. **Ensure DNS points to your server IP**
+4. **Restart services**: `sudo systemctl reload nginx && pm2 restart cleanliness-api`
+
+#### 7. Verify Deployment
+
+- Visit `https://shs-hygieia.tusd.org` (or your configured domain) in a browser
+- Test API: `curl https://shs-hygieia.tusd.org/api/health`
 - Check PM2: `pm2 status`
 - Check Nginx: `sudo systemctl status nginx`
 
@@ -217,7 +250,7 @@ PORT=3000
 NODE_ENV=production
 DB_PATH=./cleanliness.db
 SESSION_SECRET=your_secure_random_string_here
-FRONTEND_URL=http://192.168.4.18
+FRONTEND_URL=https://shs-hygieia.tusd.org
 USER_PASSWORD=your_secure_user_password_here
 ADMIN_PASSWORD=your_secure_admin_password_here
 
