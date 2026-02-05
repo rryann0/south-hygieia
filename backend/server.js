@@ -152,10 +152,11 @@ seedData();
 
 // ============ MIDDLEWARE ============
 app.use(helmet());
+// CORS: use FRONTEND_URL when set (e.g. http://your-vm-ip:5173 or https://your-domain). Else production default; dev allow any for VM access.
+const corsOrigin = process.env.FRONTEND_URL
+  || (process.env.NODE_ENV === 'production' ? 'https://shs-hygieia.tusd.org' : true);
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? (process.env.FRONTEND_URL || 'https://shs-hygieia.tusd.org') 
-    : 'http://localhost:5173',
+  origin: corsOrigin,
   credentials: true
 }));
 app.use(express.json());

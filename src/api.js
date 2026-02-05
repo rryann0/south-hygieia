@@ -1,6 +1,13 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.DEV ? 'http://localhost:3000/api' : '/api';
+// Use VITE_API_URL when set (e.g. on a VM: http://your-vm-ip:3000/api or http://your-vm-host:3000/api).
+// Otherwise: in dev use localhost:3000; in production build use relative /api (same origin, e.g. behind Nginx).
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL != null && import.meta.env.VITE_API_URL !== ''
+    ? import.meta.env.VITE_API_URL.replace(/\/$/, '') // strip trailing slash
+    : import.meta.env.DEV
+      ? 'http://localhost:3000/api'
+      : '/api';
 
 // Configure axios to send credentials (cookies) with all requests
 axios.defaults.withCredentials = true;
