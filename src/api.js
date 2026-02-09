@@ -132,6 +132,16 @@ const api = {
       withCredentials: true
     });
     return response.data;
+  },
+
+  // SSE stream URL for live updates (events only; app refetches data on event)
+  getEventsUrl: () => {
+    const base = import.meta.env.VITE_API_URL != null && import.meta.env.VITE_API_URL !== ''
+      ? import.meta.env.VITE_API_URL.replace(/\/$/, '')
+      : import.meta.env.DEV
+        ? 'http://localhost:3000/api'
+        : '/api';
+    return base + '/events';
   }
 };
 

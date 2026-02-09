@@ -20,8 +20,9 @@
     "nodemailer": "^6.9.7",
     "web-push": "^3.6.6",
     "pdfkit": "^0.13.0",
-    "winston": "^3.11.0",
-    "winston-daily-rotate-file": "^4.7.1"
+"winston": "^3.11.0",
+    "winston-daily-rotate-file": "^4.7.1",
+    "node-cron": "^3.0.3"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

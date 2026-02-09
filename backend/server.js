@@ -8,6 +8,8 @@ const SQLiteStore = require('connect-sqlite3')(session);
 const Database = require('better-sqlite3');
 const winston = require('winston');
 const DailyRotateFile = require('winston-daily-rotate-file');
+const nodemailer = require('nodemailer');
+const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
 
@@ -16,7 +18,7 @@ const PORT = process.env.PORT || 3000;
 
 // Ensure required directories exist
 const ensureDirectories = () => {
-  const dirs = ['logs', 'data'];
+  const dirs = ['logs', 'data', 'reports'];
   dirs.forEach(dir => {
     const dirPath = path.join(__dirname, dir);
     if (!fs.existsSync(dirPath)) {
@@ -132,6 +134,7 @@ const seedData = () => {
   ];
 
   const custodians = [
+    { id: 'admin', name: 'Admin', gender: null },
     { id: 'shantelle', name: 'Shantelle', gender: 'female' },
     { id: 'jalessa', name: 'Jalessa', gender: 'female' },
     { id: 'joel', name: 'Joel', gender: 'male' },
@@ -178,12 +181,131 @@ app.use(session({
   }
 }));
 
+// ============ SSE (Server-Sent Events) ============
+// Push small events when data changes; clients refetch via REST.
+const sseClients = [];
+function broadcastSSE(event) {
+  const payload = 'data: ' + JSON.stringify(event) + '\n\n';
+  sseClients.forEach((res) => {
+    try {
+      res.write(payload);
+    } catch (err) {
+      // ignore write errors (e.g. closed connection)
+    }
+  });
+}
+
+// ============ EMAIL (optional incident notifications) ============
+const mailTransport = process.env.SMTP_USER && process.env.SMTP_PASS
+  ? nodemailer.createTransport({
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      port: Number(process.env.SMTP_PORT) || 587,
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    })
+  : null;
+
+function formatEmailDate(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return d.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function sendIncidentEmail(incident) {
+  if (!mailTransport || !process.env.ADMIN_EMAIL) return Promise.resolve();
+  const { restroom, custodian, description, timestamp, lastCheckedAt, lastCheckedBy } = incident;
+  const timeStr = formatEmailDate(timestamp);
+  const lastCheckedStr = lastCheckedAt && lastCheckedBy
+    ? `${formatEmailDate(lastCheckedAt)} by ${lastCheckedBy}`
+    : lastCheckedAt
+      ? formatEmailDate(lastCheckedAt)
+      : 'Not recorded';
+  const payload = {
+    from: process.env.SMTP_USER,
+    to: process.env.ADMIN_EMAIL,
+    subject: `[Restroom Incident] ${restroom}`,
+    text: `Restroom: ${restroom}\nReported by: ${custodian}\nTime: ${timeStr}\nLast checked: ${lastCheckedStr}\n\nDescription:\n${description}`,
+    html: `<p><strong>Restroom:</strong> ${restroom}</p><p><strong>Reported by:</strong> ${custodian}</p><p><strong>Time:</strong> ${timeStr}</p><p><strong>Last checked:</strong> ${lastCheckedStr}</p><p><strong>Description:</strong></p><p>${description}</p>`,
+  };
+  return mailTransport.sendMail(payload)
+    .then(() => logger.info('Incident email sent to', process.env.ADMIN_EMAIL))
+    .catch((err) => logger.error('Incident email failed', err.message));
+}
+
+// ============ MONTHLY SPREADSHEET REPORT ============
+const REPORTS_DIR = path.join(__dirname, 'reports');
+const REPORT_HEADER = 'Date,Type,Restroom,Custodian,Details\n';
+
+function getReportPathForMonth(YYYYMM) {
+  return path.join(REPORTS_DIR, `${YYYYMM}.csv`);
+}
+
+function getCurrentReportPath() {
+  const month = new Date().toISOString().slice(0, 7);
+  return getReportPathForMonth(month);
+}
+
+function escapeCsv(val) {
+  if (val == null) return '';
+  const s = String(val);
+  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function ensureReportHeader(filePath) {
+  if (!fs.existsSync(filePath)) {
+    fs.writeFileSync(filePath, REPORT_HEADER, 'utf8');
+  }
+}
+
+function appendReportRow(row) {
+  const filePath = getCurrentReportPath();
+  ensureReportHeader(filePath);
+  const line = [row.date, row.type, row.restroom, row.custodian, row.details].map(escapeCsv).join(',');
+  fs.appendFileSync(filePath, line + '\n', 'utf8');
+}
+
+function sendMonthlyReportAndDelete() {
+  const now = new Date();
+  const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const YYYYMM = prevMonth.toISOString().slice(0, 7);
+  const filePath = getReportPathForMonth(YYYYMM);
+  if (!fs.existsSync(filePath)) {
+    logger.info('Monthly report: no file for', YYYYMM);
+    return;
+  }
+  if (!mailTransport || !process.env.ADMIN_EMAIL) {
+    logger.warn('Monthly report: mail not configured, deleting file');
+    fs.unlinkSync(filePath);
+    return;
+  }
+  const monthLabel = prevMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  const payload = {
+    from: process.env.SMTP_USER,
+    to: process.env.ADMIN_EMAIL,
+    subject: `Restroom report – ${monthLabel}`,
+    text: `Monthly restroom report for ${monthLabel} is attached.`,
+    attachments: [{ filename: `report-${YYYYMM}.csv`, content: fs.readFileSync(filePath) }],
+  };
+  mailTransport.sendMail(payload)
+    .then(() => {
+      fs.unlinkSync(filePath);
+      logger.info('Monthly report sent and file deleted:', YYYYMM);
+    })
+    .catch((err) => logger.error('Monthly report send failed', err.message));
+}
+
 // Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100
-});
-app.use('/api/', limiter);
+//const limiter = rateLimit({
+//  windowMs: 15 * 60 * 1000, // 15 minutes
+//  max: 100
+//});
+//app.use('/api/', limiter);
 
 // Check if user is authenticated (middleware)
 const isAuthenticated = (req, res, next) => {
@@ -208,6 +330,21 @@ const isAdmin = (req, res, next) => {
 // Health check (no auth required)
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// SSE stream: push events when data changes (no auth; event only signals "refetch")
+app.get('/api/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // nginx
+  res.flushHeaders();
+  sseClients.push(res);
+  res.write(': connected\n\n');
+  req.on('close', () => {
+    const i = sseClients.indexOf(res);
+    if (i !== -1) sseClients.splice(i, 1);
+  });
 });
 
 // User login (staff access to the app)
@@ -362,6 +499,16 @@ app.post('/api/checks', isAuthenticated, (req, res) => {
     `).run(id, custodianId, restroomId, timestamp, notes || '');
 
     logger.info(`Check logged: ${id} by ${custodianId} for ${restroomId}`);
+    const restroomName = db.prepare('SELECT name FROM restrooms WHERE id = ?').get(restroomId)?.name || restroomId;
+    const custodianName = db.prepare('SELECT name FROM custodians WHERE id = ?').get(custodianId)?.name || custodianId;
+    appendReportRow({
+      date: formatEmailDate(timestamp),
+      type: 'Check',
+      restroom: restroomName,
+      custodian: custodianName,
+      details: '',
+    });
+    broadcastSSE({ type: 'data-changed', reason: 'check' });
     res.status(201).json({ success: true, id });
   } catch (error) {
     logger.error('Error logging check:', error);
@@ -414,9 +561,32 @@ app.post('/api/incidents', isAuthenticated, (req, res) => {
     `).run(id, custodianId, restroomId, description, severity || 'medium', timestamp, lastCheck?.timestamp || null);
 
     logger.info(`Incident reported: ${id} for ${restroomId}`);
-
-    // TODO: Send notifications (Twilio/Nodemailer/Web Push)
-
+    const restroomName = db.prepare('SELECT name FROM restrooms WHERE id = ?').get(restroomId)?.name || restroomId;
+    const custodianName = db.prepare('SELECT name FROM custodians WHERE id = ?').get(custodianId)?.name || custodianId;
+    const lastCheckInfo = db.prepare(`
+      SELECT c.timestamp as lastCheckedAt, cu.name as lastCheckedBy
+      FROM checks c
+      JOIN custodians cu ON c.custodianId = cu.id
+      WHERE c.restroomId = ?
+      ORDER BY c.timestamp DESC
+      LIMIT 1
+    `).get(restroomId);
+    sendIncidentEmail({
+      restroom: restroomName,
+      custodian: custodianName,
+      description,
+      timestamp,
+      lastCheckedAt: lastCheckInfo?.lastCheckedAt || null,
+      lastCheckedBy: lastCheckInfo?.lastCheckedBy || null,
+    });
+    appendReportRow({
+      date: formatEmailDate(timestamp),
+      type: 'Incident',
+      restroom: restroomName,
+      custodian: custodianName,
+      details: description,
+    });
+    broadcastSSE({ type: 'data-changed', reason: 'incident' });
     res.status(201).json({ success: true, id });
   } catch (error) {
     logger.error('Error reporting incident:', error);
@@ -439,7 +609,21 @@ app.post('/api/incidents/resolve', isAuthenticated, isAdmin, (req, res) => {
       WHERE id = ?
     `).run(new Date().toISOString(), incidentId);
 
+    const resolved = db.prepare(`
+      SELECT r.name as restroom FROM incidents i
+      JOIN restrooms r ON i.restroomId = r.id WHERE i.id = ?
+    `).get(incidentId);
+    const resolvedAt = new Date().toISOString();
+    appendReportRow({
+      date: formatEmailDate(resolvedAt),
+      type: 'Resolved',
+      restroom: resolved?.restroom || 'Unknown',
+      custodian: 'Admin',
+      details: '',
+    });
+
     logger.info(`Incident resolved: ${incidentId}`);
+    broadcastSSE({ type: 'data-changed', reason: 'incident-resolved' });
     res.json({ success: true });
   } catch (error) {
     logger.error('Error resolving incident:', error);
@@ -457,5 +641,7 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
   console.log(`Server running on http://localhost:${PORT}`);
+  cron.schedule('5 0 1 * *', sendMonthlyReportAndDelete);
+  logger.info('Monthly report cron: 1st of each month at 00:05');
 });
 

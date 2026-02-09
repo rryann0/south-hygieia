@@ -37,16 +37,22 @@ function App() {
     }
   }, [isAuthenticated]);
 
-  // Auto-refresh data every 30 seconds (only when authenticated)
+  // SSE: refetch when server pushes a data-changed event
   useEffect(() => {
     if (!isAuthenticated) return;
-
-    const interval = setInterval(() => {
-      loadData(false).catch(err => console.error('Auto-refresh error:', err));
-      checkAdminStatus();
-    }, 30000);
-
-    return () => clearInterval(interval);
+    const url = api.getEventsUrl();
+    const es = new EventSource(url);
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.type === 'data-changed') {
+          loadData(false).catch((err) => console.error('SSE refresh error:', err));
+          checkAdminStatus();
+        }
+      } catch (_) {}
+    };
+    es.onerror = () => es.close();
+    return () => es.close();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
@@ -84,7 +90,9 @@ function App() {
   const checkAdminStatus = async () => {
     try {
       const response = await api.checkAdminStatus();
-      setIsAdmin(response.isAdmin || false);
+      const admin = response.isAdmin || false;
+      setIsAdmin(admin);
+      if (admin) setSelectedCustodian('Admin');
     } catch (error) {
       setIsAdmin(false);
     }
@@ -133,7 +141,8 @@ function App() {
       setIncidents(incidentsData);
       
       if (custodiansData.length > 0 && !selectedCustodian) {
-        setSelectedCustodian(custodiansData[0].name);
+        const firstStaff = custodiansData.find(c => c.name !== 'Admin') || custodiansData[0];
+        setSelectedCustodian(firstStaff.name);
       }
       if (restroomsData.length > 0 && !selectedRestroom) {
         setSelectedRestroom(restroomsData[0].name);
@@ -161,13 +170,13 @@ function App() {
     }
   };
 
-  // Get available restrooms based on custodian gender
+  // Get available restrooms based on custodian gender (Admin sees all)
   const getAvailableRestrooms = (custodianName) => {
+    if (custodianName === 'Admin') return restrooms;
     const custodian = custodians.find(c => c.name === custodianName);
     if (!custodian || !custodian.gender) {
       return restrooms; // Fallback to all restrooms if gender not found
     }
-    
     if (custodian.gender.toLowerCase() === 'female') {
       return restrooms.filter(r => femaleRestrooms.includes(r.name));
     } else if (custodian.gender.toLowerCase() === 'male') {
@@ -192,7 +201,7 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCustodian, custodians, restrooms]);
 
-  // Memoize last check times to avoid recalculating on every render
+  // Memoize last check times and who checked
   const lastCheckTimes = useMemo(() => {
     const times = {};
     restrooms.forEach(restroom => {
@@ -207,6 +216,22 @@ function App() {
       }
     });
     return times;
+  }, [logs, restrooms]);
+
+  const lastCheckBy = useMemo(() => {
+    const by = {};
+    restrooms.forEach(restroom => {
+      const logsForRestroom = logs.filter(l => l.restroom === restroom.name);
+      if (logsForRestroom.length === 0) {
+        by[restroom.name] = null;
+      } else {
+        const lastLog = logsForRestroom.reduce((latest, current) =>
+          new Date(current.timestamp) > new Date(latest.timestamp) ? current : latest
+        );
+        by[restroom.name] = lastLog.custodian || null;
+      }
+    });
+    return by;
   }, [logs, restrooms]);
 
   // Helper to get the last check time for a restroom
@@ -228,7 +253,7 @@ function App() {
     }
 
     try {
-      const custodian = custodians.find(c => c.name === selectedCustodian);
+      const custodian = selectedCustodian === 'Admin' ? custodians.find(c => c.name === 'Admin') : custodians.find(c => c.name === selectedCustodian);
       const restroom = restrooms.find(r => r.name === selectedRestroom);
       
       if (!custodian || !restroom) {
@@ -262,7 +287,7 @@ function App() {
     }
 
     try {
-      const custodian = custodians.find(c => c.name === selectedCustodian);
+      const custodian = selectedCustodian === 'Admin' ? custodians.find(c => c.name === 'Admin') : custodians.find(c => c.name === selectedCustodian);
       const restroom = restrooms.find(r => r.name === selectedRestroom2);
       
       if (!custodian || !restroom) {
@@ -320,6 +345,7 @@ function App() {
       const response = await api.adminLogin(passwordInput);
       if (response.success) {
         setIsAdmin(true);
+        setSelectedCustodian('Admin');
         setShowPasswordPrompt(false);
         setPasswordInput('');
         alert('Admin access granted!');
@@ -339,15 +365,16 @@ function App() {
   };
 
   const handleAdminLogout = async () => {
+    const firstStaff = custodians.find(c => c.name !== 'Admin') || custodians[0];
     try {
       await api.adminLogout();
       setIsAdmin(false);
+      setSelectedCustodian(firstStaff?.name || '');
       alert('Logged out of admin mode');
     } catch (error) {
       console.error('Failed to logout:', error);
-      // Still set admin to false locally even if logout fails
       setIsAdmin(false);
-      // Don't show error to user for logout failures
+      setSelectedCustodian(firstStaff?.name || '');
     }
   };
 
@@ -427,8 +454,6 @@ function App() {
               <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent mb-2">
                 🧹 Restroom Management System
               </h1>
-              <p className="text-gray-600">Track checks and report incidents</p>
-              <p className="text-xs text-gray-400 mt-1">🔄 Auto-sync enabled • Updates every 30 seconds</p>
             </div>
         <button
               className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 ${
@@ -488,15 +513,19 @@ function App() {
           )}
 
           <div className="mt-4">
-            <label className="block mb-2 font-semibold text-gray-700">Select Your Name:</label>
+            <label className="block mb-2 font-semibold text-gray-700">{isAdmin ? 'Logged in as' : 'Select Your Name:'}</label>
         <select
               className="w-full border-2 border-gray-200 rounded-xl p-3 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none font-medium"
           value={selectedCustodian}
           onChange={(e) => setSelectedCustodian(e.target.value)}
         >
-              {custodians.map((custodian) => (
-                <option key={custodian.id} value={custodian.name}>{custodian.name}</option>
-          ))}
+              {isAdmin ? (
+                <option value="Admin">Admin</option>
+              ) : (
+                custodians.filter(c => c.name !== 'Admin').map((custodian) => (
+                  <option key={custodian.id} value={custodian.name}>{custodian.name}</option>
+                ))
+              )}
         </select>
           </div>
       </div>
@@ -612,6 +641,7 @@ function App() {
                         </p>
                         <p className="text-xs text-gray-500 mt-1">
                           {lastCheckTimes[restroom.name].toLocaleTimeString()}
+                          {lastCheckBy[restroom.name] && ` by ${lastCheckBy[restroom.name]}`}
                         </p>
                       </>
                     ) : (

@@ -21,6 +21,9 @@ logs/
 backend/logs/
 backend/*.log
 
+# Monthly report CSVs (generated, then emailed and deleted)
+backend/reports/
+
 # Build
 dist/
 build/
