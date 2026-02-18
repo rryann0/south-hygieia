@@ -176,7 +176,7 @@ app.use(session({
   cookie: {
     maxAge: null, // Session cookie (expires when browser closes)
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production', // true for HTTPS, false for HTTP
+    secure: false,
     sameSite: 'lax' // Changed from 'strict' to 'lax' for better compatibility
   }
 }));
