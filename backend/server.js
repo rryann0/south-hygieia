@@ -309,7 +309,7 @@ function sendIncidentEmail(incident, to = process.env.ADMIN_EMAIL) {
     `Restroom: ${restroom}\nReported by: ${custodian}\nTime: ${timeStr}\nLast checked: ${lastCheckStr}\n\nDescription:\n${description}` +
     (IS_DEMO ? `\n\n${demoNote}` : "");
   const html =
-    `<p><strong>Restroom:</strong> ${escapeHtml(restroom)}</p><p><strong>Reported by:</strong> ${escapeHtml(custodian)}</p><p><strong>Time:</strong> ${escapeHtml(timeStr)}</p><p><strong>Last checked:</strong> ${escapeHtml(lastCheckedStr)}</p><p><strong>Description:</strong></p><p>${escapeHtml(description)}</p>` +
+    `<p><strong>Restroom:</strong> ${escapeHtml(restroom)}</p><p><strong>Reported by:</strong> ${escapeHtml(custodian)}</p><p><strong>Time:</strong> ${escapeHtml(timeStr)}</p><p><strong>Last checked:</strong> ${escapeHtml(lastCheckStr)}</p><p><strong>Description:</strong></p><p>${escapeHtml(description)}</p>` +
     (IS_DEMO
       ? `<p style="color:#666;font-size:12px">${escapeHtml(demoNote)}</p>`
       : "");
