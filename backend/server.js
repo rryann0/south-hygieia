@@ -255,33 +255,77 @@ function formatEmailDate(iso) {
   return d.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
 }
 
-function sendIncidentEmail(incident) {
-  if (!mailTransport || !process.env.ADMIN_EMAIL) return Promise.resolve();
-  const {
-    restroom,
-    custodian,
-    description,
-    timestamp,
-    lastCheckedAt,
-    lastCheckedBy,
-  } = incident;
+//escape user input before sending in email to avoid injection attacks
+function escapeHtml(str) {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+const IS_DEMO = process.env.DEMO_MODE === "true";
+
+//send email through Brevo HTTPS API
+function sendViaBrevo({ to, subject, text, html }) {
+  return fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "api-key": process.env.BREVO_API_KEY,
+    },
+    body: JSON.stringify({
+      sender: { name: "Hygieia Demo", email: process.env.DEMO_SENDER_EMAIL },
+      to: [{ email: to }],
+      subject,
+      textContent: text,
+      htmlContent: html,
+    }),
+  }).then((res) => {
+    if (!res.ok) throw new Error(`Brevo responded ${res.status}`);
+  });
+}
+
+function sendIncidentEmail(incident, to = process.env.ADMIN_EMAIL) {
+  if (!to) return Promise.resolve();
+  if (IS_DEMO ? !process.env.BREVO_API_KEY : !mailTransport) {
+    return Promise.resolve(); // skip sending if not configured
+  }
+  const { restroom, custodian, timestamp, lastCheckedAt, lastCheckedBy } =
+    incident;
+  const description = IS_DEMO
+    ? String(incident.description).slice(0, 300)
+    : incident.description;
   const timeStr = formatEmailDate(timestamp);
-  const lastCheckedStr =
+  const lastCheckStr =
     lastCheckedAt && lastCheckedBy
       ? `${formatEmailDate(lastCheckedAt)} by ${lastCheckedBy}`
       : lastCheckedAt
         ? formatEmailDate(lastCheckedAt)
         : "Not recorded";
-  const payload = {
-    from: process.env.SMTP_USER,
-    to: process.env.ADMIN_EMAIL,
-    subject: `[Restroom Incident] ${restroom}`,
-    text: `Restroom: ${restroom}\nReported by: ${custodian}\nTime: ${timeStr}\nLast checked: ${lastCheckedStr}\n\nDescription:\n${description}`,
-    html: `<p><strong>Restroom:</strong> ${restroom}</p><p><strong>Reported by:</strong> ${custodian}</p><p><strong>Time:</strong> ${timeStr}</p><p><strong>Last checked:</strong> ${lastCheckedStr}</p><p><strong>Description:</strong></p><p>${description}</p>`,
-  };
-  return mailTransport
-    .sendMail(payload)
-    .then(() => logger.info("Incident email sent to", process.env.ADMIN_EMAIL))
+  const demoNote =
+    "This is a test alert from the Hygieia public demo at github.com/rryann0/south-hygieia. If you did not request this alert, please ignore this email.";
+  const subject = `${IS_DEMO ? "[Hygieia Demo] " : ""}[Restroom Incident] ${restroom}`;
+  const text =
+    `Restroom: ${restroom}\nReported by: ${custodian}\nTime: ${timeStr}\nLast checked: ${lastCheckStr}\n\nDescription:\n${description}` +
+    (IS_DEMO ? `\n\n${demoNote}` : "");
+  const html =
+    `<p><strong>Restroom:</strong> ${escapeHtml(restroom)}</p><p><strong>Reported by:</strong> ${escapeHtml(custodian)}</p><p><strong>Time:</strong> ${escapeHtml(timeStr)}</p><p><strong>Last checked:</strong> ${escapeHtml(lastCheckedStr)}</p><p><strong>Description:</strong></p><p>${escapeHtml(description)}</p>` +
+    (IS_DEMO
+      ? `<p style="color:#666;font-size:12px">${escapeHtml(demoNote)}</p>`
+      : "");
+  const send = IS_DEMO
+    ? sendViaBrevo({ to, subject, text, html })
+    : mailTransport.sendMail({
+        from: process.env.SMTP_USER,
+        to,
+        subject,
+        text,
+        html,
+      });
+  return send
+    .then(() => logger.info("Incident email sent to", to))
     .catch((err) => logger.error("Incident email failed", err.message));
 }
 
@@ -671,14 +715,24 @@ app.post("/api/incidents", isAuthenticated, (req, res) => {
     `,
       )
       .get(restroomId);
-    sendIncidentEmail({
-      restroom: restroomName,
-      custodian: custodianName,
-      description,
-      timestamp,
-      lastCheckedAt: lastCheckInfo?.lastCheckedAt || null,
-      lastCheckedBy: lastCheckInfo?.lastCheckedBy || null,
-    });
+    const emailTo = IS_DEMO ? req.session.demoEmail : process.env.ADMIN_EMAIL;
+    let emailStatus = "none";
+    if (emailTo && (!IS_DEMO || demoEmailAllowed(req.ip))) {
+      sendIncidentEmail(
+        {
+          restroom: restroomName,
+          custodian: custodianName,
+          description,
+          timestamp,
+          lastCheckedAt: lastCheckInfo?.lastCheckedAt || null,
+          lastCheckedBy: lastCheckInfo?.lastCheckedBy || null,
+        },
+        emailTo,
+      );
+      emailStatus = "sent";
+    } else if (emailTo) {
+      emailStatus = "limit";
+    }
     appendReportRow({
       date: formatEmailDate(timestamp),
       type: "Incident",
@@ -687,7 +741,7 @@ app.post("/api/incidents", isAuthenticated, (req, res) => {
       details: description,
     });
     broadcastSSE({ type: "data-changed", reason: "incident" });
-    res.status(201).json({ success: true, id });
+    res.status(201).json({ success: true, id, emailStatus });
   } catch (error) {
     logger.error("Error reporting incident:", error);
     res.status(500).json({ error: "Failed to report incident" });
@@ -736,6 +790,57 @@ app.post("/api/incidents/resolve", isAuthenticated, isAdmin, (req, res) => {
     res.status(500).json({ error: "Failed to resolve incident" });
   }
 });
+
+// ============ DEMO: visitor-chosen alert email ============
+// Only active when DEMO_MODE=true. Limits stop the demo from being used to spam people.
+const DEMO_EMAILS_PER_VISITOR = 3; // per IP address, per day
+const DEMO_EMAILS_PER_DAY = 50; // across all visitors
+let demoDay = new Date().toDateString();
+let demoTotal = 0;
+const demoCounts = new Map();
+
+function demoEmailAllowed(ip) {
+  const today = new Date().toDateString();
+  if (today !== demoDay) {
+    demoDay = today;
+    demoTotal = 0;
+    demoCounts.clear();
+  }
+  const used = demoCounts.get(ip) || 0;
+  if (used >= DEMO_EMAILS_PER_VISITOR || demoTotal >= DEMO_EMAILS_PER_DAY) {
+    return false;
+  }
+  demoCounts.set(ip, used + 1);
+  demoTotal += 1;
+  return true;
+}
+
+if (IS_DEMO) {
+  // Render sits behind a proxy; this makes req.ip the visitor's real IP.
+  app.set("trust proxy", 1);
+}
+
+app.post("/api/demo/email", isAuthenticated, (req, res) => {
+  if (!IS_DEMO) return res.status(404).json({ error: "Not found" });
+  const email = String(req.body.email || "").trim();
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res
+      .status(400)
+      .json({ error: "Please enter a valid email address" });
+  }
+  req.session.demoEmail = email;
+  res.json({ success: true, email });
+});
+
+// ============ SERVE FRONTEND (for public demos) ============
+// serve built React app from Express instead of Nginx
+if (process.env.SERVE_FRONTEND === "true") {
+  const distDir = path.join(__dirname, "..", "dist");
+  app.use(express.static(distDir));
+  app.get(/^(?!\/api).*/, (req, res) => {
+    res.sendFile(path.join(distDir, "index.html"));
+  });
+}
 
 // Error handling middleware
 app.use((err, req, res, next) => {

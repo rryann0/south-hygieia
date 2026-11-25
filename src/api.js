@@ -1,13 +1,13 @@
-import axios from 'axios';
+import axios from "axios";
 
 // Use VITE_API_URL when set (e.g. on a VM: http://your-vm-ip:3000/api or http://your-vm-host:3000/api).
 // Otherwise: in dev use localhost:3000; in production build use relative /api (same origin, e.g. behind Nginx).
 const API_BASE_URL =
-  import.meta.env.VITE_API_URL != null && import.meta.env.VITE_API_URL !== ''
-    ? import.meta.env.VITE_API_URL.replace(/\/$/, '') // strip trailing slash
+  import.meta.env.VITE_API_URL != null && import.meta.env.VITE_API_URL !== ""
+    ? import.meta.env.VITE_API_URL.replace(/\/$/, "") // strip trailing slash
     : import.meta.env.DEV
-      ? 'http://localhost:3000/api'
-      : '/api';
+      ? "http://localhost:3000/api"
+      : "/api";
 
 // Configure axios to send credentials (cookies) with all requests
 axios.defaults.withCredentials = true;
@@ -19,15 +19,15 @@ axios.defaults.timeout = 10000; // 10 seconds
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.code === 'ECONNABORTED') {
-      error.message = 'Request timeout - server is taking too long to respond';
-    } else if (error.code === 'ERR_NETWORK') {
-      error.message = 'Network error - please check your connection';
+    if (error.code === "ECONNABORTED") {
+      error.message = "Request timeout - server is taking too long to respond";
+    } else if (error.code === "ERR_NETWORK") {
+      error.message = "Network error - please check your connection";
     } else if (!error.response) {
-      error.message = 'Server unavailable - please try again later';
+      error.message = "Server unavailable - please try again later";
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 const api = {
@@ -50,11 +50,11 @@ const api = {
   },
 
   // Log a check
-  logCheck: async (custodianId, restroomId, notes = '') => {
+  logCheck: async (custodianId, restroomId, notes = "") => {
     const response = await axios.post(`${API_BASE_URL}/checks`, {
       custodianId,
       restroomId,
-      notes
+      notes,
     });
     return response.data;
   },
@@ -65,85 +65,117 @@ const api = {
     return response.data;
   },
 
+  // Demo only: save the email address that should receive incident alerts
+  saveDemoEmail: async (email) => {
+    const response = await axios.post(`${API_BASE_URL}/demo/email`, { email });
+    return response.data;
+  },
+
   // Report incident
-  reportIncident: async (custodianId, restroomId, description, severity = 'medium') => {
+  reportIncident: async (
+    custodianId,
+    restroomId,
+    description,
+    severity = "medium",
+  ) => {
     const response = await axios.post(`${API_BASE_URL}/incidents`, {
       custodianId,
       restroomId,
       description,
-      severity
+      severity,
     });
     return response.data;
   },
 
   // Resolve incident
   resolveIncident: async (incidentId) => {
-    const response = await axios.post(`${API_BASE_URL}/incidents/resolve`, {
-      incidentId
-    }, {
-      withCredentials: true
-    });
+    const response = await axios.post(
+      `${API_BASE_URL}/incidents/resolve`,
+      {
+        incidentId,
+      },
+      {
+        withCredentials: true,
+      },
+    );
     return response.data;
   },
 
   // Admin authentication
   checkAdminStatus: async () => {
     const response = await axios.get(`${API_BASE_URL}/admin/status`, {
-      withCredentials: true
+      withCredentials: true,
     });
     return response.data;
   },
 
   adminLogin: async (password) => {
-    const response = await axios.post(`${API_BASE_URL}/admin/login`, {
-      password
-    }, {
-      withCredentials: true
-    });
+    const response = await axios.post(
+      `${API_BASE_URL}/admin/login`,
+      {
+        password,
+      },
+      {
+        withCredentials: true,
+      },
+    );
     return response.data;
   },
 
   adminLogout: async () => {
-    const response = await axios.post(`${API_BASE_URL}/admin/logout`, {}, {
-      withCredentials: true
-    });
+    const response = await axios.post(
+      `${API_BASE_URL}/admin/logout`,
+      {},
+      {
+        withCredentials: true,
+      },
+    );
     return response.data;
   },
 
   // User authentication
   checkAuthStatus: async () => {
     const response = await axios.get(`${API_BASE_URL}/auth/status`, {
-      withCredentials: true
+      withCredentials: true,
     });
     return response.data;
   },
 
   userLogin: async (password) => {
-    const response = await axios.post(`${API_BASE_URL}/auth/login`, {
-      password
-    }, {
-      withCredentials: true
-    });
+    const response = await axios.post(
+      `${API_BASE_URL}/auth/login`,
+      {
+        password,
+      },
+      {
+        withCredentials: true,
+      },
+    );
     return response.data;
   },
 
   userLogout: async () => {
-    const response = await axios.post(`${API_BASE_URL}/auth/logout`, {}, {
-      withCredentials: true
-    });
+    const response = await axios.post(
+      `${API_BASE_URL}/auth/logout`,
+      {},
+      {
+        withCredentials: true,
+      },
+    );
     return response.data;
   },
 
   // SSE stream URL for live updates (events only; app refetches data on event)
   getEventsUrl: () => {
-    const base = import.meta.env.VITE_API_URL != null && import.meta.env.VITE_API_URL !== ''
-      ? import.meta.env.VITE_API_URL.replace(/\/$/, '')
-      : import.meta.env.DEV
-        ? 'http://localhost:3000/api'
-        : '/api';
-    return base + '/events';
-  }
+    const base =
+      import.meta.env.VITE_API_URL != null &&
+      import.meta.env.VITE_API_URL !== ""
+        ? import.meta.env.VITE_API_URL.replace(/\/$/, "")
+        : import.meta.env.DEV
+          ? "http://localhost:3000/api"
+          : "/api";
+    return base + "/events";
+  },
 };
 
 export default api;
-
