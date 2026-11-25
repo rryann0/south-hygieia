@@ -14,6 +14,7 @@ backend/*.db-wal
 .env
 */.env
 backend/.env
+backend/custodians.json
 
 # Logs
 logs/
