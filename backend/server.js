@@ -251,8 +251,16 @@ const mailTransport =
 
 function formatEmailDate(iso) {
   if (!iso) return null;
-  const d = new Date(iso);
-  return d.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+  // Always show Pacific time (the school's time zone), no matter what time zone the server runs in.
+  return new Date(iso).toLocaleString("en-US", {
+    timeZone: process.env.DISPLAY_TIMEZONE || "America/Los_Angeles",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
 }
 
 //escape user input before sending in email to avoid injection attacks
