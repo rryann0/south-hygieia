@@ -267,29 +267,27 @@ function escapeHtml(str) {
 
 const IS_DEMO = process.env.DEMO_MODE === "true";
 
-//send email through Brevo HTTPS API
-function sendViaBrevo({ to, subject, text, html }) {
-  return fetch("https://api.brevo.com/v3/smtp/email", {
+// The demo sends email through a small Google Apps Script "relay" over HTTPS,
+// because free hosts block the normal email (SMTP) ports.
+async function sendViaRelay({ to, subject, text, html }) {
+  const res = await fetch(process.env.EMAIL_RELAY_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "api-key": process.env.BREVO_API_KEY,
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      sender: { name: "Hygieia Demo", email: process.env.DEMO_SENDER_EMAIL },
-      to: [{ email: to }],
+      secret: process.env.EMAIL_RELAY_SECRET,
+      to,
       subject,
-      textContent: text,
-      htmlContent: html,
+      text,
+      html,
     }),
-  }).then((res) => {
-    if (!res.ok) throw new Error(`Brevo responded ${res.status}`);
   });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok || !result.ok) throw new Error("Email relay failed");
 }
 
 function sendIncidentEmail(incident, to = process.env.ADMIN_EMAIL) {
   if (!to) return Promise.resolve();
-  if (IS_DEMO ? !process.env.BREVO_API_KEY : !mailTransport) {
+  if (IS_DEMO ? !process.env.EMAIL_RELAY_URL : !mailTransport) {
     return Promise.resolve(); // skip sending if not configured
   }
   const { restroom, custodian, timestamp, lastCheckedAt, lastCheckedBy } =
@@ -316,7 +314,7 @@ function sendIncidentEmail(incident, to = process.env.ADMIN_EMAIL) {
       ? `<p style="color:#666;font-size:12px">${escapeHtml(demoNote)}</p>`
       : "");
   const send = IS_DEMO
-    ? sendViaBrevo({ to, subject, text, html })
+    ? sendViaRelay({ to, subject, text, html })
     : mailTransport.sendMail({
         from: process.env.SMTP_USER,
         to,
